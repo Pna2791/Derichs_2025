@@ -19,6 +19,10 @@ public:
         return encoderCount;
     }
 
+    void reset(){
+        encoderCount = 0;
+    }
+
 private:
     int pinA;
     int pinB;

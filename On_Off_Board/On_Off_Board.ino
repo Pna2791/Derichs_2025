@@ -107,6 +107,7 @@ void process_command(String command){
             for(int i=0; i<n_channels; i++){
                 digitalWrite(channel_pins[i], state);
             }
+            return;
         }
     }
     Serial.println("ERR: Invalid command");

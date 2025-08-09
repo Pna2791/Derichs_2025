@@ -7,7 +7,8 @@
 BluetoothSerial SerialBT;
 
 
-#define ROBOT_NAME "BLDC_1"
+
+#define ROBOT_NAME NAP_1
 
 
 #include "BLDC_motor.h"
@@ -17,25 +18,16 @@ BluetoothSerial SerialBT;
 #include <BLDC_servo.h>
 
 
-
-// Choose one robot by defining its name
-#define ROBOT_BLDC_2
-
-
-#if defined(ROBOT_NAP_1) || defined(ROBOT_NAP_2)
-    //           pwm, dir, brake, speed, dir, brake
-    BLDC_Motor motor_left( 16,  5, 17, 1, 1, 1);
-    BLDC_Motor motor_right(22, 23, 19, 1, 0, 1);
-#else
-    //           pwm, dir, brake, speed, dir, brake
-    BLDC_Motor motor_left( 16,  5, 17, 0, 1, 1);
-    BLDC_Motor motor_right(22, 23, 19, 0, 0, 1);
-#endif
+//           pwm, dir, brake, speed, dir, brake
+BLDC_Motor motor_left( 16,  5, 17, 0, 1, 1);
+BLDC_Motor motor_right(22, 23, 19, 0, 0, 1);
 
 BLDC_Motor  slider_motor(27, 26, 14, 1, 0, 1);
 Encoder     slider_encoder(34, 35);
-PIDController   slider_pid(0.9, 0, 0.003, -170, 255, 20);   // P, I, D, max_speed
+PIDController   slider_pid(0.9, 0, 0.003, 200);   // P, I, D, max_speed
 
+// Choose one robot by defining its name
+#define ROBOT_NAP_1
 
 #ifdef ROBOT_BLDC_1
     #define ROBOT_NAME "BLDC_1"
@@ -43,11 +35,11 @@ PIDController   slider_pid(0.9, 0, 0.003, -170, 255, 20);   // P, I, D, max_spee
     BLDC_Servo slider_servo(slider_motor, slider_encoder, slider_pid, 50); // steps/mm
 #elif defined(ROBOT_BLDC_2)
     #define ROBOT_NAME "BLDC_2"
-    #define MAX_HEIGHT 850
+    #define MAX_HEIGHT 420
     BLDC_Servo slider_servo(slider_motor, slider_encoder, slider_pid, 25); // steps/mm
 #elif defined(ROBOT_NAP_1)
     #define ROBOT_NAME "NAP_1"
-    #define MAX_HEIGHT 500
+    #define MAX_HEIGHT 400
     BLDC_Servo slider_servo(slider_motor, slider_encoder, slider_pid, 50); // steps/mm
 #elif defined(ROBOT_NAP_2)
     #define ROBOT_NAME "NAP_2"
@@ -58,9 +50,6 @@ PIDController   slider_pid(0.9, 0, 0.003, -170, 255, 20);   // P, I, D, max_spee
     #define MAX_HEIGHT 400
     BLDC_Servo slider_servo(slider_motor, slider_encoder, slider_pid, 50); // steps/mm
 #endif
-
-
-
 
 
 bool servo_enable = false;
@@ -296,59 +285,18 @@ void auto_drop_box(){
 }
 
 
-// NAP's Combo
-void prepare_first_box(){
-    forward_command("O01");
-    slider_servo.goto_position_mm(20);
-}
-void take_first_box(){
-    slider_servo.goto_position_mm(0);
-    
-    long time_out = millis() + 500;
-    while(millis() < time_out){
-        signal_receriver();
-        update_servo();
-    }
-    slider_servo.goto_position_mm(215);
-    forward_command("O11");
-}
-
-void take_second_box(){
-    slider_servo.goto_position_mm(425);
-    
-    // long time_out = millis() + 1000;
-    // while(millis() < time_out){
-    //     signal_receriver();
-    //     update_servo();
-    // }
-    forward_command("O21");
-}
-void take_last_box(){
-    slider_servo.goto_position_mm(460);
-}
-
-
 void process_vaccum(char ch){
     if(ch == '0')   forward_command("OA0");
     if(ch == '1')   forward_command("OA1");
 }
 
-
 void process_combo(int value){
     // Combo just run in servo mode
     if(!servo_enable)   return;
 
-
-    #if defined(ROBOT_NAP_1) || defined(ROBOT_NAP_2)
-        if(value == 11) prepare_first_box();
-        if(value == 12) take_first_box();
-        if(value == 13) take_second_box();
-        if(value == 14) take_last_box();
-    #else
-        if(value == 11) prepare_take_box();
-        if(value == 12) auto_take_box();
-        if(value == 13) auto_drop_box();
-    #endif
+    if(value == 11) prepare_take_box();
+    if(value == 12) auto_take_box();
+    if(value == 13) auto_drop_box();
 
     if(value == 31) prepare_take_fire();
     if(value == 32) auto_take_fire();

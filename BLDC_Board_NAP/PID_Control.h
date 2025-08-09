@@ -79,14 +79,14 @@ private:
 
 class PIDController {
 public:
-    PIDController(float kp, float ki, float kd, float min_output, float max_output, int skip_error=10) {
+    PIDController(float kp, float ki, float kd, float max_output, int skip_error=10) {
         this->kp = kp;
         this->ki = ki;
         this->kd = kd;
         this->skip_error = skip_error;
         integral = 0;
         prevError = 0;
-        outputMin = min_output;
+        outputMin = -max_output;
         outputMax = max_output;
     }
 

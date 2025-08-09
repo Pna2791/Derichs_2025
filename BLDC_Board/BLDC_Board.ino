@@ -361,12 +361,14 @@ void processSerialCommand(String command) {
     char prefix = command.charAt(0);
 
     if(prefix == 'S'){  // Chassis speed
+        forward_command(command);
         int value = command.substring(2).toInt();
         wheel_speed = value;
         return;
     }
 
     if(prefix == 'M'){  // Chassis direction
+        forward_command(command);
         int value = command.substring(1).toInt();
         move_wheel(value);
         return;

@@ -27,7 +27,7 @@ Encoder     slider_encoder(34, 35);
 PIDController   slider_pid(0.9, 0, 0.003, 200);   // P, I, D, max_speed
 
 // Choose one robot by defining its name
-#define ROBOT_NAP_1
+#define ROBOT_BLDC_2
 
 #ifdef ROBOT_BLDC_1
     #define ROBOT_NAME "BLDC_1"

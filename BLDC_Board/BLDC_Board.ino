@@ -19,28 +19,46 @@ BluetoothSerial SerialBT;
 
 
 // Choose one robot by defining its name
-#define ROBOT_BLDC_2
+#define ROBOT_NAP_2
 
 
+BLDC_Motor  slider_motor(27, 26, 14, 1, 0, 1);
+Encoder     slider_encoder(34, 35);
 #if defined(ROBOT_NAP_1) || defined(ROBOT_NAP_2)
+    // //           pwm, dir, brake, speed, dir, brake
+    // BLDC_Motor motor_left( 16,  5, 17, 1, 1, 1);
+    // BLDC_Motor motor_right(22, 23, 19, 1, 0, 1);
+
+
+    // mod motor
     //           pwm, dir, brake, speed, dir, brake
-    BLDC_Motor motor_left( 16,  5, 17, 1, 1, 1);
-    BLDC_Motor motor_right(22, 23, 19, 1, 0, 1);
+    BLDC_Motor motor_left( 16,  5, 17, 1, 0, 1);
+    BLDC_Motor motor_right(22, 23, 19, 1, 1, 1);
+
+
+    // VESC
+    //           pwm, dir, brake, speed, dir, brake
+    // BLDC_Motor motor_left( 16,  5, 17, 1, 1, 1);
+    // BLDC_Motor motor_right(22, 23, 19, 1, 0, 1);
+
+    // //           pwm, dir, brake, speed, dir, brake
+    // BLDC_Motor motor_left( 16, 17,  5,  0, 1, 1);
+    // BLDC_Motor motor_right(22, 19, 23,  0, 0, 1);
 #else
     //           pwm, dir, brake, speed, dir, brake
     BLDC_Motor motor_left( 16,  5, 17, 0, 1, 1);
     BLDC_Motor motor_right(22, 23, 19, 0, 0, 1);
 #endif
 
-BLDC_Motor  slider_motor(27, 26, 14, 1, 0, 1);
-Encoder     slider_encoder(34, 35);
-PIDController   slider_pid(0.9, 0, 0.003, -170, 255, 20);   // P, I, D, max_speed
+// PIDController   slider_pid(0.9, 0, 0.003, -170, 255, 20);   // P, I, D, max_speed
+// PIDController   slider_pid(2, 0.001, 0.01, -170, 255, 20);   // P, I, D, max_speed
+PIDController   slider_pid(2, 0.002, 0.01, -100, 255, 20);   // P, I, D, max_speed
 
 
 #ifdef ROBOT_BLDC_1
     #define ROBOT_NAME "BLDC_1"
     #define MAX_HEIGHT 400
-    BLDC_Servo slider_servo(slider_motor, slider_encoder, slider_pid, 50); // steps/mm
+    BLDC_Servo slider_servo(slider_motor, slider_encoder, slider_pid, 12.5); // steps/mm
 #elif defined(ROBOT_BLDC_2)
     #define ROBOT_NAME "BLDC_2"
     #define MAX_HEIGHT 850
@@ -48,10 +66,10 @@ PIDController   slider_pid(0.9, 0, 0.003, -170, 255, 20);   // P, I, D, max_spee
 #elif defined(ROBOT_NAP_1)
     #define ROBOT_NAME "NAP_1"
     #define MAX_HEIGHT 500
-    BLDC_Servo slider_servo(slider_motor, slider_encoder, slider_pid, 50); // steps/mm
+    BLDC_Servo slider_servo(slider_motor, slider_encoder, slider_pid, 12.5); // steps/mm
 #elif defined(ROBOT_NAP_2)
     #define ROBOT_NAME "NAP_2"
-    #define MAX_HEIGHT 400
+    #define MAX_HEIGHT 500
     BLDC_Servo slider_servo(slider_motor, slider_encoder, slider_pid, 50); // steps/mm
 #else
     #define ROBOT_NAME "DEFAULT"
@@ -85,6 +103,7 @@ void setup() {
 
 void forward_command(String command){
     Serial2.println(command);
+    Serial.println(command);
 }
 
 
@@ -118,7 +137,7 @@ void update_servo(){
 
 void signal_receriver(){
     static String command_0 = "";
-    static String command_1 = "";
+    static String command_2 = "";
     static String command_BT = "";
 
     // Check for serial commands
@@ -130,14 +149,14 @@ void signal_receriver(){
         }else   command_0 += ch;
     }
 
-    // // Check for serial commands
-    // if (Serial1.available()) {
-    //     char ch = Serial1.read();
-    //     if(ch == '\n'){
-    //         processSerialCommand(command_1);
-    //         command_1 = "";
-    //     }else   command_1 += ch;
-    // }
+    // Check for serial commands
+    if (Serial2.available()) {
+        char ch = Serial2.read();
+        if(ch == '\n'){
+            processSerialCommand(command_2);
+            command_2 = "";
+        }else   command_2 += ch;
+    }
 
 
     // Check for serial commands
@@ -148,6 +167,7 @@ void signal_receriver(){
             command_BT = "";
         }else   command_BT += ch;
     }
+    delayMicro
 }
 
 void loop() {
@@ -217,7 +237,7 @@ void process_hand(char ch){
     }else{
         if(ch == '0')   slider_motor.stop();
         if(ch == '*')   slider_motor.setSpeed(255);
-        if(ch == '/')   slider_motor.setSpeed(-200);
+        if(ch == '/')   slider_motor.setSpeed(-170);
         if(ch == '+')   slider_motor.setSpeed(100);
         if(ch == '-')   slider_motor.setSpeed(-80);
     }
@@ -242,11 +262,42 @@ void process_hand_servo(int value){
     }
 }
 
+void prepare_and_reset(){
+    // Goto 0 position
+    slider_servo.goto_position_mm(0);
+    long timeout = millis() + 1500;
+    while(millis() < timeout)   update_servo();
+
+    servo_enable = false;
+    slider_motor.setSpeed(-30);
+    delay(300);
+    slider_motor.stop();
+    delay(300);
+
+    slider_servo.hard_reset();
+    servo_enable = true;
+
+    prepare_first_box();
+}
+
+void auto_reset(){
+    Serial.println("Auto reset");
+
+    servo_enable = false;
+    slider_motor.setSpeed(-30);
+    delay(2000);
+    slider_motor.stop();
+    delay(500);
+
+    slider_servo.hard_reset();
+    servo_enable = true;
+}
+
 
 #define ball_height 0
 void auto_take_ball(){
     // Take ball with 500ms
-    long timeout = millis() + 500;
+    long timeout = millis() + 300;
     slider_servo.goto_position_mm(ball_height);
     while(millis() < timeout){
         update_servo();
@@ -259,24 +310,24 @@ void auto_take_ball(){
 #define fire_height 20
 void auto_take_fire(){
     // Take fire with 500ms
-    long timeout = millis() + 500;
+    long timeout = millis() + 300;
     slider_servo.goto_position_mm(fire_height);
     while(millis() < timeout){
         update_servo();
     }
 
     // Go up with 20mm
-    slider_servo.goto_position_mm(fire_height + 10);
+    slider_servo.goto_position_mm(fire_height + 20);
 }
 void prepare_take_fire(){
-    slider_servo.goto_position_mm(fire_height+10);
+    slider_servo.goto_position_mm(fire_height + 20);
     forward_command("O01");
 }
 
 #define box_height 100
 void auto_take_box(){
     // Take fire with 500ms
-    long timeout = millis() + 500;
+    long timeout = millis() + 200;
     slider_servo.goto_position_mm(box_height);
     while(millis() < timeout){
         update_servo();
@@ -299,12 +350,12 @@ void auto_drop_box(){
 // NAP's Combo
 void prepare_first_box(){
     forward_command("O01");
-    slider_servo.goto_position_mm(20);
+    slider_servo.goto_position_mm(15);
 }
 void take_first_box(){
     slider_servo.goto_position_mm(0);
     
-    long time_out = millis() + 500;
+    long time_out = millis() + 300;
     while(millis() < time_out){
         signal_receriver();
         update_servo();
@@ -324,7 +375,13 @@ void take_second_box(){
     forward_command("O21");
 }
 void take_last_box(){
-    slider_servo.goto_position_mm(460);
+    slider_servo.goto_position_mm(450);
+}
+void drop_bot_box(){
+    forward_command("O20");
+}
+void drop_full_box(){
+    forward_command("OA0");
 }
 
 
@@ -334,16 +391,70 @@ void process_vaccum(char ch){
 }
 
 
+void auto_repare_flag(){
+    servo_enable = true;
+    long time_out = millis() + 1200;
+    slider_servo.goto_position_mm(0);
+    while(millis() < time_out){
+        signal_receriver();
+        update_servo();
+    }
+
+    time_out += 500;
+    servo_enable = false;
+    slider_motor.setSpeed(-40);
+    while(millis() < time_out){
+        signal_receriver();
+        update_servo();
+    }
+
+    slider_motor.stop();
+    time_out += 300;
+    while(millis() < time_out){
+        signal_receriver();
+        update_servo();
+    }
+    slider_servo.hard_reset();
+    servo_enable = true;
+    slider_servo.goto_position_mm(40);
+
+    wheel_speed = 55;
+}
+void auto_take_flag(){
+    forward_command("O31");
+    slider_servo.goto_position_mm(0);
+
+    long time_out = millis() + 700;
+    while(millis() < time_out){
+        signal_receriver();
+        update_servo();
+    }
+    slider_servo.goto_position_mm(10);
+
+    wheel_speed = 150;
+}
+
+void auto_push_flag(){
+    wheel_speed = 55;
+    slider_servo.goto_position_mm(410);
+}
+
 void process_combo(int value){
+    if(value == 0) auto_reset();
+    if(value == 33) auto_repare_flag();
+
     // Combo just run in servo mode
     if(!servo_enable)   return;
 
 
     #if defined(ROBOT_NAP_1) || defined(ROBOT_NAP_2)
-        if(value == 11) prepare_first_box();
+        if(value == 11) prepare_and_reset();
+        if(value == 10) prepare_first_box();
         if(value == 12) take_first_box();
         if(value == 13) take_second_box();
         if(value == 14) take_last_box();
+        if(value == 15) drop_bot_box();
+        if(value == 16) drop_full_box();
     #else
         if(value == 11) prepare_take_box();
         if(value == 12) auto_take_box();
@@ -352,6 +463,10 @@ void process_combo(int value){
 
     if(value == 31) prepare_take_fire();
     if(value == 32) auto_take_fire();
+
+    if(value == 34) auto_take_flag();
+    if(value == 35) auto_push_flag();
+    if(value == 36) forward_command("OA0");
 }
 
 

@@ -52,7 +52,13 @@ Encoder     slider_encoder(34, 35);
 
 // PIDController   slider_pid(0.9, 0, 0.003, -170, 255, 20);   // P, I, D, max_speed
 // PIDController   slider_pid(2, 0.001, 0.01, -170, 255, 20);   // P, I, D, max_speed
-PIDController   slider_pid(2, 0.002, 0.01, -100, 255, 20);   // P, I, D, max_speed
+
+
+#if defined(ROBOT_NAP_2) || defined(ROBOT_BLDC_2)
+    PIDController   slider_pid(4, 0.004, 0.01, -180, 255, 15);   // P, I, D, max_speed
+#else
+    PIDController   slider_pid(2, 0.002, 0.01, -120, 255, 20);   // P, I, D, max_speed
+#endif
 
 
 #ifdef ROBOT_BLDC_1
@@ -144,8 +150,9 @@ void signal_receriver(){
     if (Serial.available()) {
         char ch = Serial.read();
         if(ch == '\n'){
-            processSerialCommand(command_0);
+            String command = command_0;
             command_0 = "";
+            processSerialCommand(command);
         }else   command_0 += ch;
     }
 
@@ -153,8 +160,9 @@ void signal_receriver(){
     if (Serial2.available()) {
         char ch = Serial2.read();
         if(ch == '\n'){
-            processSerialCommand(command_2);
+            String command = command_2;
             command_2 = "";
+            processSerialCommand(command);
         }else   command_2 += ch;
     }
 
@@ -163,11 +171,11 @@ void signal_receriver(){
     if (SerialBT.available()) {
         char ch = SerialBT.read();
         if(ch == '\n'){
-            processSerialCommand(command_BT);
+            String command = command_BT;
             command_BT = "";
+            processSerialCommand(command);
         }else   command_BT += ch;
     }
-    delayMicro
 }
 
 void loop() {
@@ -175,6 +183,21 @@ void loop() {
     update_servo();
 }
 
+void my_delay(int value){
+    long time_out = millis() + value;
+    while(millis() < time_out){
+        signal_receriver();
+        update_servo();
+    }
+}
+
+
+void check_servo(int speed){
+    servo_enable = false;
+    slider_motor.setSpeed(speed);
+    my_delay(10);
+    servo_enable = true;
+}
 
 void move_wheel(int dir){
     Serial.println("Move " + String(dir));
@@ -265,14 +288,13 @@ void process_hand_servo(int value){
 void prepare_and_reset(){
     // Goto 0 position
     slider_servo.goto_position_mm(0);
-    long timeout = millis() + 1500;
-    while(millis() < timeout)   update_servo();
+    my_delay(1500);
 
     servo_enable = false;
     slider_motor.setSpeed(-30);
-    delay(300);
+    my_delay(300);
     slider_motor.stop();
-    delay(300);
+    my_delay(300);
 
     slider_servo.hard_reset();
     servo_enable = true;
@@ -284,10 +306,15 @@ void auto_reset(){
     Serial.println("Auto reset");
 
     servo_enable = false;
-    slider_motor.setSpeed(-30);
-    delay(2000);
+    #if defined(ROBOT_NAP_2)
+        slider_motor.setSpeed(-20);
+        my_delay(4000);
+    #else
+        slider_motor.setSpeed(-30);
+        my_delay(2000);
+    #endif
     slider_motor.stop();
-    delay(500);
+    my_delay(500);
 
     slider_servo.hard_reset();
     servo_enable = true;
@@ -297,11 +324,8 @@ void auto_reset(){
 #define ball_height 0
 void auto_take_ball(){
     // Take ball with 500ms
-    long timeout = millis() + 300;
     slider_servo.goto_position_mm(ball_height);
-    while(millis() < timeout){
-        update_servo();
-    }
+    my_delay(300);
 
     // Go up with 20mm
     slider_servo.goto_position_mm(ball_height + 20);
@@ -310,28 +334,22 @@ void auto_take_ball(){
 #define fire_height 20
 void auto_take_fire(){
     // Take fire with 500ms
-    long timeout = millis() + 300;
     slider_servo.goto_position_mm(fire_height);
-    while(millis() < timeout){
-        update_servo();
-    }
+    my_delay(500);
 
     // Go up with 20mm
-    slider_servo.goto_position_mm(fire_height + 20);
+    slider_servo.goto_position_mm(fire_height + 120);
 }
 void prepare_take_fire(){
-    slider_servo.goto_position_mm(fire_height + 20);
+    slider_servo.goto_position_mm(fire_height + 120);
     forward_command("O01");
 }
 
 #define box_height 100
 void auto_take_box(){
     // Take fire with 500ms
-    long timeout = millis() + 200;
     slider_servo.goto_position_mm(box_height);
-    while(millis() < timeout){
-        update_servo();
-    }
+    my_delay(300);
 
     // Go up with 20mm
     slider_servo.goto_position_mm(box_height + 40);
@@ -353,28 +371,26 @@ void prepare_first_box(){
     slider_servo.goto_position_mm(15);
 }
 void take_first_box(){
+    check_servo(20);
     slider_servo.goto_position_mm(0);
-    
-    long time_out = millis() + 300;
-    while(millis() < time_out){
-        signal_receriver();
-        update_servo();
-    }
+
+    #if defined(ROBOT_NAP_1)
+        my_delay(300);
+    #else
+        my_delay(500);
+    #endif
+
     slider_servo.goto_position_mm(215);
     forward_command("O11");
 }
 
 void take_second_box(){
+    check_servo(-20);
     slider_servo.goto_position_mm(425);
-    
-    // long time_out = millis() + 1000;
-    // while(millis() < time_out){
-    //     signal_receriver();
-    //     update_servo();
-    // }
     forward_command("O21");
 }
 void take_last_box(){
+    check_servo(-20);
     slider_servo.goto_position_mm(450);
 }
 void drop_bot_box(){
@@ -391,65 +407,91 @@ void process_vaccum(char ch){
 }
 
 
+void prepare_fire_nap(){
+    check_servo(20);
+
+    servo_enable = true;
+    slider_servo.goto_position_mm(30);
+    forward_command("O31");
+}
+
+
+void auto_take_fire_nap(){
+    check_servo(20);
+
+    slider_servo.goto_position_mm(10);
+    my_delay(1000);
+    slider_servo.goto_position_mm(30);
+    forward_command("O31");
+}
+
+
 void auto_repare_flag(){
-    servo_enable = true;
-    long time_out = millis() + 1200;
-    slider_servo.goto_position_mm(0);
-    while(millis() < time_out){
-        signal_receriver();
-        update_servo();
-    }
+    forward_command("O30");
+    check_servo(20);
+    // slider_servo.goto_position_mm(10);
+    my_delay(1500);
 
-    time_out += 500;
-    servo_enable = false;
-    slider_motor.setSpeed(-40);
-    while(millis() < time_out){
-        signal_receriver();
-        update_servo();
-    }
+    // servo_enable = false;
+    // slider_motor.setSpeed(-40);
+    // my_delay(500);
 
-    slider_motor.stop();
-    time_out += 300;
-    while(millis() < time_out){
-        signal_receriver();
-        update_servo();
-    }
-    slider_servo.hard_reset();
-    servo_enable = true;
+    // slider_motor.stop();
+    // my_delay(300);
+    // slider_servo.hard_reset();
+    // servo_enable = true;
+
     slider_servo.goto_position_mm(40);
 
     wheel_speed = 55;
 }
+
+
 void auto_take_flag(){
+    servo_enable = true;
     forward_command("O31");
     slider_servo.goto_position_mm(0);
+    my_delay(700);
 
-    long time_out = millis() + 700;
-    while(millis() < time_out){
-        signal_receriver();
-        update_servo();
-    }
     slider_servo.goto_position_mm(10);
-
     wheel_speed = 150;
 }
 
 void auto_push_flag(){
     wheel_speed = 55;
+    servo_enable = false;
+    slider_motor.setSpeed(-20);
+    my_delay(10);
+    servo_enable = true;
     slider_servo.goto_position_mm(410);
 }
+
+
+void auto_start(){
+    slider_servo.goto_position_mm(300);
+    my_delay(3000);
+    prepare_first_box();
+}
+
 
 void process_combo(int value){
     if(value == 0) auto_reset();
     if(value == 33) auto_repare_flag();
 
     // Combo just run in servo mode
-    if(!servo_enable)   return;
+    // if(!servo_enable)   return;
 
 
     #if defined(ROBOT_NAP_1) || defined(ROBOT_NAP_2)
-        if(value == 11) prepare_and_reset();
         if(value == 10) prepare_first_box();
+        if(value == 1) auto_start();
+
+        #if defined(ROBOT_NAP_1)
+            if(value == 11) prepare_and_reset();
+        #else
+            if(value == 11) prepare_first_box();
+        #endif
+
         if(value == 12) take_first_box();
         if(value == 13) take_second_box();
         if(value == 14) take_last_box();
@@ -461,12 +503,19 @@ void process_combo(int value){
         if(value == 13) auto_drop_box();
     #endif
 
-    if(value == 31) prepare_take_fire();
-    if(value == 32) auto_take_fire();
+    #if defined(ROBOT_NAP_2)
+        if(value == 31) prepare_fire_nap();
+        if(value == 32) auto_take_fire_nap();
 
-    if(value == 34) auto_take_flag();
-    if(value == 35) auto_push_flag();
-    if(value == 36) forward_command("OA0");
+
+        if(value == 34) auto_take_flag();
+        if(value == 35) auto_push_flag();
+        if(value == 36) forward_command("OA0");
+    #else
+        if(value == 31) prepare_take_fire();
+        if(value == 32) auto_take_fire();
+    #endif
+
 }
 
 

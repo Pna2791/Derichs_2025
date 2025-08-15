@@ -19,7 +19,7 @@ BluetoothSerial SerialBT;
 
 
 // Choose one robot by defining its name
-#define ROBOT_NAP_2
+#define ROBOT_BLDC_2
 
 
 BLDC_Motor  slider_motor(27, 26, 14, 1, 0, 1);
@@ -55,9 +55,9 @@ Encoder     slider_encoder(34, 35);
 
 
 #if defined(ROBOT_NAP_2) || defined(ROBOT_BLDC_2)
-    PIDController   slider_pid(4, 0.004, 0.01, -180, 255, 15);   // P, I, D, max_speed
+    PIDController   slider_pid(4, 0.004, 0.01, -180, 255, 20);   // P, I, D, max_speed
 #else
-    PIDController   slider_pid(2, 0.002, 0.01, -120, 255, 20);   // P, I, D, max_speed
+    PIDController   slider_pid(2, 0.002, 0.01, -150, 255, 20);   // P, I, D, max_speed
 #endif
 
 
@@ -288,7 +288,7 @@ void process_hand_servo(int value){
 void prepare_and_reset(){
     // Goto 0 position
     slider_servo.goto_position_mm(0);
-    my_delay(1500);
+    my_delay(2000);
 
     servo_enable = false;
     slider_motor.setSpeed(-30);
@@ -375,9 +375,9 @@ void take_first_box(){
     slider_servo.goto_position_mm(0);
 
     #if defined(ROBOT_NAP_1)
-        my_delay(300);
+        my_delay(700);
     #else
-        my_delay(500);
+        my_delay(700);
     #endif
 
     slider_servo.goto_position_mm(215);
@@ -410,7 +410,20 @@ void process_vaccum(char ch){
 void prepare_fire_nap(){
     check_servo(20);
 
+    // Go to zero to reset
+    slider_servo.goto_position_mm(0);
+    my_delay(4000);
+
+    servo_enable = false;
+    slider_motor.setSpeed(-30);
+    my_delay(500);
+
+    slider_motor.stop();
+    my_delay(300);
+
+    slider_servo.hard_reset();
     servo_enable = true;
+
     slider_servo.goto_position_mm(30);
     forward_command("O31");
 }
@@ -420,9 +433,14 @@ void auto_take_fire_nap(){
     check_servo(20);
 
     slider_servo.goto_position_mm(10);
-    my_delay(1000);
+    my_delay(500);
     slider_servo.goto_position_mm(30);
     forward_command("O31");
+}
+
+void auto_push_fire_nap(){
+    check_servo(-20);
+    slider_servo.goto_position_mm(220);
 }
 
 
@@ -474,6 +492,25 @@ void auto_start(){
 }
 
 
+void auto_load_take_ball_nap(){
+    check_servo(20);
+    slider_servo.goto_position_mm(0);
+    forward_command("O31");
+}
+void auto_push_ball_nap(){
+    check_servo(-20);
+    slider_servo.goto_position_mm(430);
+}
+
+
+
+
+
+
+
+
+
+
 void process_combo(int value){
     if(value == 0) auto_reset();
     if(value == 33) auto_repare_flag();
@@ -488,6 +525,8 @@ void process_combo(int value){
 
         #if defined(ROBOT_NAP_1)
             if(value == 11) prepare_and_reset();
+            if(value == 33) auto_load_take_ball_nap();
+            if(value == 34) auto_push_flag();
         #else
             if(value == 11) prepare_first_box();
         #endif
@@ -510,12 +549,13 @@ void process_combo(int value){
 
         if(value == 34) auto_take_flag();
         if(value == 35) auto_push_flag();
-        if(value == 36) forward_command("OA0");
+        if(value == 37) auto_push_fire_nap();
     #else
         if(value == 31) prepare_take_fire();
         if(value == 32) auto_take_fire();
     #endif
 
+    if(value == 36) forward_command("OA0");
 }
 
 

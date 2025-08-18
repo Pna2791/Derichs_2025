@@ -19,7 +19,7 @@ BluetoothSerial SerialBT;
 
 
 // Choose one robot by defining its name
-#define ROBOT_BLDC_2
+#define ROBOT_NAP_2
 
 
 BLDC_Motor  slider_motor(27, 26, 14, 1, 0, 1);
@@ -55,7 +55,7 @@ Encoder     slider_encoder(34, 35);
 
 
 #if defined(ROBOT_NAP_2) || defined(ROBOT_BLDC_2)
-    PIDController   slider_pid(4, 0.004, 0.01, -180, 255, 20);   // P, I, D, max_speed
+    PIDController   slider_pid(4, 0.004, 0.01, -150, 255, 20);   // P, I, D, max_speed
 #else
     PIDController   slider_pid(2, 0.002, 0.01, -150, 255, 20);   // P, I, D, max_speed
 #endif
@@ -195,7 +195,7 @@ void my_delay(int value){
 void check_servo(int speed){
     servo_enable = false;
     slider_motor.setSpeed(speed);
-    my_delay(10);
+    my_delay(5);
     servo_enable = true;
 }
 
@@ -256,6 +256,13 @@ void process_hand(char ch){
         if(ch == '/')   delta = -50;
         if(ch == '+')   delta =  5;
         if(ch == '-')   delta = -5;
+        if(delta > 0){
+            slider_motor.setSpeed(-10);
+            my_delay(1);
+        }else{
+            slider_motor.setSpeed(10);
+            my_delay(1);
+        }
         slider_servo.move_position_mm(delta);
     }else{
         if(ch == '0')   slider_motor.stop();
@@ -504,22 +511,117 @@ void auto_push_ball_nap(){
 
 
 
+// C11
+void nap_prepare_ball(){
+    forward_command("O01");
+    check_servo(-20);
+    check_servo(20);
+    slider_servo.goto_position_mm(30);
+}
+
+// C12
+void nap_take_ball(){
+    forward_command("O01");
+    check_servo(-20);
+    check_servo(20);
+
+    slider_servo.goto_position_mm(0);
+    // my_delay(1000);
+    // slider_servo.goto_position_mm(30);
+}
 
 
+// C 13
+void nap_prepare_fire(){
+    forward_command("O11");
+    check_servo(-20);
+    check_servo(20);
+    slider_servo.goto_position_mm(40);
+}
 
+// C14
+void nap_take_fire(){
+    forward_command("O11");
+    check_servo(-20);
+    check_servo(20);
+    slider_servo.goto_position_mm(0);
+    my_delay(500);
+    slider_servo.goto_position_mm(40);
+}
+
+
+#define cot_height 250
+// C15 
+void nap_push_fire(){
+    check_servo(-20);
+    check_servo(20);
+    slider_servo.goto_position_mm(cot_height);
+
+}
+
+// C16
+void nap_drop_fire(){
+    forward_command("O10");
+    check_servo(-20);
+    check_servo(20);
+    slider_servo.goto_position_mm(cot_height+50);
+}
+
+// C17
+void nap_drop_ball(){
+    forward_command("OA0");
+
+    // my_delay(1000);
+    // check_servo(-20);
+    // check_servo(20);
+    // slider_servo.goto_position_mm(30);
+}
+
+
+// C31
+void nap_prepare_flag(){   
+    forward_command("O21");
+    check_servo(-20);
+    check_servo(20);
+    slider_servo.goto_position_mm(60);
+}
+
+// C32
+void nap_take_flag(){
+    forward_command("O21");
+    check_servo(-20);
+    check_servo(20);
+    slider_servo.goto_position_mm(0);
+    wheel_speed = 150;
+
+    my_delay(2000);
+    slider_servo.goto_position_mm(20);
+}
+
+// C33
+#define flag_height 420
+void nap_push_flag(){
+    wheel_speed = 45;
+    check_servo(-20);
+    check_servo(20);
+    slider_servo.goto_position_mm(flag_height);
+}
+
+void nap_drop_flag(){
+    forward_command("OA0");
+}
 
 
 
 
 void process_combo(int value){
     if(value == 0) auto_reset();
-    if(value == 33) auto_repare_flag();
 
     // Combo just run in servo mode
     // if(!servo_enable)   return;
 
 
-    #if defined(ROBOT_NAP_1) || defined(ROBOT_NAP_2)
+    #if defined(ROBOT_NAP_1)
         if(value == 10) prepare_first_box();
         if(value == 1) auto_start();
 
@@ -536,26 +638,30 @@ void process_combo(int value){
         if(value == 14) take_last_box();
         if(value == 15) drop_bot_box();
         if(value == 16) drop_full_box();
+        if(value == 36) forward_command("OA0");
+
+    #elif defined(ROBOT_NAP_2)
+
+        if(value == 11) nap_prepare_ball();
+        if(value == 12) nap_take_ball();
+        if(value == 13) nap_prepare_fire();
+        if(value == 14) nap_take_fire();
+        
+        if(value == 15) nap_push_fire();
+        if(value == 16) nap_drop_fire();
+        if(value == 17) nap_drop_ball();
+
+        if(value == 31) nap_prepare_flag();
+        if(value == 32) nap_take_flag();
+
+        if(value == 33) nap_push_flag();
+        if(value == 34) nap_drop_flag();
     #else
         if(value == 11) prepare_take_box();
         if(value == 12) auto_take_box();
         if(value == 13) auto_drop_box();
     #endif
 
-    #if defined(ROBOT_NAP_2)
-        if(value == 31) prepare_fire_nap();
-        if(value == 32) auto_take_fire_nap();
-
-
-        if(value == 34) auto_take_flag();
-        if(value == 35) auto_push_flag();
-        if(value == 37) auto_push_fire_nap();
-    #else
-        if(value == 31) prepare_take_fire();
-        if(value == 32) auto_take_fire();
-    #endif
-
-    if(value == 36) forward_command("OA0");
 }
 
 

@@ -19,7 +19,7 @@ BluetoothSerial SerialBT;
 
 
 // Choose one robot by defining its name
-#define ROBOT_NAP_2
+#define ROBOT_NAP_1
 
 Encoder     left_encoder(13);
 Encoder     right_encoder(18);
@@ -66,7 +66,7 @@ Encoder     slider_encoder(34, 35);
 #ifdef ROBOT_BLDC_1
     #define ROBOT_NAME "BLDC_1"
     #define MAX_HEIGHT 400
-    BLDC_Servo slider_servo(slider_motor, slider_encoder, slider_pid, 12.5); // steps/mm
+    BLDC_Servo slider_servo(slider_motor, slider_encoder, slider_pid, 50); // steps/mm
 #elif defined(ROBOT_BLDC_2)
     #define ROBOT_NAME "BLDC_2"
     #define MAX_HEIGHT 850
@@ -74,7 +74,7 @@ Encoder     slider_encoder(34, 35);
 #elif defined(ROBOT_NAP_1)
     #define ROBOT_NAME "NAP_1"
     #define MAX_HEIGHT 500
-    BLDC_Servo slider_servo(slider_motor, slider_encoder, slider_pid, 12.5); // steps/mm
+    BLDC_Servo slider_servo(slider_motor, slider_encoder, slider_pid, 50); // steps/mm
 #elif defined(ROBOT_NAP_2)
     #define ROBOT_NAME "NAP_2"
     #define MAX_HEIGHT 500
@@ -312,8 +312,6 @@ void prepare_and_reset(){
 
     slider_servo.hard_reset();
     servo_enable = true;
-
-    prepare_first_box();
 }
 
 void auto_reset(){
@@ -325,12 +323,12 @@ void auto_reset(){
         my_delay(4000);
     #else
         slider_motor.setSpeed(-30);
-        my_delay(2000);
+        my_delay(1000);
     #endif
     slider_motor.stop();
     my_delay(500);
 
-    slider_servo.hard_reset();
+    slider_servo.reset(-10);
     servo_enable = true;
 }
 
@@ -379,28 +377,35 @@ void auto_drop_box(){
 }
 
 
+#define auto_take_delay 1000
 // NAP's Combo
-void prepare_first_box(){
-    forward_command("O01");
-    slider_servo.goto_position_mm(15);
+void prepare_D30(){
+    forward_command("OA1");
+    slider_servo.goto_position_mm(50);
 }
-void take_first_box(){
+void take_D30(){
     check_servo(20);
     slider_servo.goto_position_mm(0);
+    my_delay(auto_take_delay);
+    
+    slider_servo.goto_position_mm(100);
+}
 
-    #if defined(ROBOT_NAP_1)
-        my_delay(700);
-    #else
-        my_delay(700);
-    #endif
-
-    slider_servo.goto_position_mm(215);
-    forward_command("O11");
+void prepare_D40(){
+    forward_command("OA1");
+    slider_servo.goto_position_mm(150);
+}
+void take_D40(){
+    check_servo(20);
+    slider_servo.goto_position_mm(100);
+    my_delay(auto_take_delay);
+    
+    slider_servo.goto_position_mm(200);
 }
 
 void take_second_box(){
     check_servo(-20);
-    slider_servo.goto_position_mm(425);
+    slider_servo.goto_position_mm(150);
     forward_command("O21");
 }
 void take_last_box(){
@@ -502,9 +507,7 @@ void auto_push_flag(){
 void auto_start(){
     slider_servo.goto_position_mm(300);
     my_delay(3000);
-    prepare_first_box();
 }
-
 
 void auto_load_take_ball_nap(){
     check_servo(20);
@@ -629,23 +632,22 @@ void process_combo(int value){
 
 
     #if defined(ROBOT_NAP_1)
-        if(value == 10) prepare_first_box();
-        if(value == 1) auto_start();
+        // if(value == 1) auto_start();
 
-        #if defined(ROBOT_NAP_1)
-            if(value == 11) prepare_and_reset();
-            if(value == 33) auto_load_take_ball_nap();
-            if(value == 34) auto_push_flag();
-        #else
-            if(value == 11) prepare_first_box();
-        #endif
+        if(value == 11) prepare_D30();
+        if(value == 12) take_D30();
+        if(value == 13) prepare_D40();
+        if(value == 14) take_D40();
 
-        if(value == 12) take_first_box();
-        if(value == 13) take_second_box();
-        if(value == 14) take_last_box();
-        if(value == 15) drop_bot_box();
-        if(value == 16) drop_full_box();
-        if(value == 36) forward_command("OA0");
+        if(value == 16) forward_command("OA0");
+        if(value == 17) forward_command("O21");
+
+        // if(value == 12) take_first_box();
+        // if(value == 13) take_second_box();
+        // if(value == 14) take_last_box();
+        // if(value == 15) drop_bot_box();
+        // if(value == 16) drop_full_box();
+        // if(value == 36) forward_command("OA0");
 
     #elif defined(ROBOT_NAP_2)
 

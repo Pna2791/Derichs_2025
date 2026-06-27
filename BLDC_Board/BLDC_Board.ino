@@ -21,6 +21,8 @@ BluetoothSerial SerialBT;
 // Choose one robot by defining its name
 #define ROBOT_NAP_2
 
+Encoder     left_encoder(13);
+Encoder     right_encoder(18);
 
 BLDC_Motor  slider_motor(27, 26, 14, 1, 0, 1);
 Encoder     slider_encoder(34, 35);
@@ -96,6 +98,8 @@ void setup() {
     Serial2.begin(9600, SERIAL_8N1, 2, 15); // RX, TX
 
     slider_encoder.begin();
+    left_encoder.begin();
+    right_encoder.begin();
     slider_servo.limit(0, MAX_HEIGHT);
 
     motor_left.stop();
@@ -118,11 +122,14 @@ void show_encoder(){
     static long prev_pos = 0;
 
     if(millis() > next_update){
-        long current_pos = slider_encoder.getCount();
-        String message = String(current_pos-prev_pos) + " \t" + String(current_pos);
+        long slider_pos = slider_encoder.getCount();
+        long left_pos = left_encoder.getCount();
+        long right_pos = right_encoder.getCount();
+        String message = String(slider_pos - prev_pos) + " \t" + String(slider_pos)
+                       + " \t" + String(left_pos) + " \t" + String(right_pos);
         Serial.println(message);
 
-        prev_pos = current_pos;
+        prev_pos = slider_pos;
         next_update += 1000;
     }
 }

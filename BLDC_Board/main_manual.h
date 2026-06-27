@@ -1,5 +1,6 @@
-#ifndef MAIN_AUTO_H
-#define MAIN_AUTO_H
+#ifndef MAIN_MANUAL_H
+#define MAIN_MANUAL_H
+
 
 #include "config.h"
 
@@ -364,8 +365,7 @@ void processSerialCommand(String command) {
         process_vaccum(command.charAt(1));
         return;
     }
-
-
 }
+
 
 #endif

@@ -27,33 +27,14 @@ Encoder     right_encoder(18);
 BLDC_Motor  slider_motor(27, 26, 14, 1, 0, 1);
 Encoder     slider_encoder(34, 35);
 #if defined(ROBOT_NAP_1) || defined(ROBOT_NAP_2)
-    // //           pwm, dir, brake, speed, dir, brake
-    // BLDC_Motor motor_left( 16,  5, 17, 1, 1, 1);
-    // BLDC_Motor motor_right(22, 23, 19, 1, 0, 1);
-
-
-    // mod motor
     //           pwm, dir, brake, speed, dir, brake
     BLDC_Motor motor_left( 16,  5, 17, 1, 0, 1);
     BLDC_Motor motor_right(22, 23, 19, 1, 1, 1);
-
-
-    // VESC
-    //           pwm, dir, brake, speed, dir, brake
-    // BLDC_Motor motor_left( 16,  5, 17, 1, 1, 1);
-    // BLDC_Motor motor_right(22, 23, 19, 1, 0, 1);
-
-    // //           pwm, dir, brake, speed, dir, brake
-    // BLDC_Motor motor_left( 16, 17,  5,  0, 1, 1);
-    // BLDC_Motor motor_right(22, 19, 23,  0, 0, 1);
 #else
     //           pwm, dir, brake, speed, dir, brake
     BLDC_Motor motor_left( 16,  5, 17, 0, 1, 1);
     BLDC_Motor motor_right(22, 23, 19, 0, 0, 1);
 #endif
-
-// PIDController   slider_pid(0.9, 0, 0.003, -170, 255, 20);   // P, I, D, max_speed
-// PIDController   slider_pid(2, 0.001, 0.01, -170, 255, 20);   // P, I, D, max_speed
 
 
 #if defined(ROBOT_NAP_2) || defined(ROBOT_BLDC_2)
@@ -460,27 +441,6 @@ void auto_take_fire_nap(){
 void auto_push_fire_nap(){
     check_servo(-20);
     slider_servo.goto_position_mm(220);
-}
-
-
-void auto_repare_flag(){
-    forward_command("O30");
-    check_servo(20);
-    // slider_servo.goto_position_mm(10);
-    my_delay(1500);
-
-    // servo_enable = false;
-    // slider_motor.setSpeed(-40);
-    // my_delay(500);
-
-    // slider_motor.stop();
-    // my_delay(300);
-    // slider_servo.hard_reset();
-    // servo_enable = true;
-
-    slider_servo.goto_position_mm(40);
-
-    wheel_speed = 55;
 }
 
 

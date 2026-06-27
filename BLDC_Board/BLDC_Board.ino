@@ -2,7 +2,7 @@
 
 // Uncomment exactly one:
 // #define ROBOT_TYPE_MANUAL
-// #define ROBOT_TYPE_AUTO
+#define ROBOT_TYPE_AUTO
 
 #if defined(ROBOT_TYPE_AUTO)
     #include "main_auto.h"

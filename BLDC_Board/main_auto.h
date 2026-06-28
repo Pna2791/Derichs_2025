@@ -37,7 +37,7 @@ BLDC_Motor motor_right(22, 23, 19, 1, 1, 1);
 PIDController   slider_pid(2, 0.002, 0.01, -150, 255, 20);   // P, I, D, max_speed
 
 PIDController   forward_pid(10, 2, 1, -192, 192); // 315rpm speed 100-150
-PIDController   rotate_pid(0.5, 0.0, 0.035, -255, 255); // 315rpm speed 100-150
+PIDController   rotate_pid(2, 0.0, 0.15, -255, 255); // 315rpm speed 100-150
 
 #define MAX_HEIGHT 300
 BLDC_Servo slider_servo(slider_motor, slider_encoder, slider_pid, 50); // steps/mm
@@ -54,7 +54,7 @@ void processSerialCommand(String command);
 void setup() {
     Serial.begin(115200);
     SerialBT.begin(ROBOT_NAME); // Set the Bluetooth device name
-    Serial2.begin(9600, SERIAL_8N1, 2, 15); // RX, TX use for Hi229
+    Serial2.begin(115200, SERIAL_8N1, 2, 15); // RX, TX use for Hi229
 
     slider_encoder.begin();
     left_encoder.begin();
@@ -136,6 +136,10 @@ void signal_receriver(){
 void my_loop(){
     signal_receriver();
     update_servo();
+    // int direction = get_direction(Serial2);
+    // if(direction != 0xFFF){
+    //     Serial.println("Ang: " + String(direction));
+    // }
 }
 
 
@@ -308,77 +312,85 @@ void process_vaccum(char ch){
 
 
 
-
+#define DEBUG
 
 #define WHEEL_DIAMETER 100
 #define GEAR_RATIO 14   
 #define STEPS_PER_REVOLUTION 6
 
 // gear_ratio * steps_per_revolution / wheel_diameter / pi
-const float step_per_mm = GEAR_RATIO * STEPS_PER_REVOLUTION / WHEEL_DIAMETER / 3.1416;
+const float step_per_mm = 1.0f * GEAR_RATIO * STEPS_PER_REVOLUTION / WHEEL_DIAMETER / 3.1416;
 
 #define brake_distance      10
 #define slowdown_distance   250
-#define auto_forward_speed  100
+#define auto_forward_speed  120
 void auto_forward(int distance){
+    Serial.println("Auto forward: " + String(distance));
+    Serial.println("step_per_mm: " + String(step_per_mm));
     forward_pid.reset();
-    long left_pos = left_encoder.getCount() + (distance-brake_distance)*step_per_mm ;
-    long right_pos = right_encoder.getCount() + (distance-brake_distance)*step_per_mm;
+    float delta_plush = step_per_mm * (distance-brake_distance);
+    long left_pos = left_encoder.getCount() + delta_plush;
+    long right_pos = right_encoder.getCount() + delta_plush;
+    Serial.println("Left target pos: " + String(left_pos));
+    Serial.println("Right target pos: " + String(right_pos));
 
     int auto_speed = auto_forward_speed;
     motor_left.setSpeed(auto_speed);
     motor_right.setSpeed(auto_speed);
 
     bool is_normal_speed = true;
-    int left_pos_slowdown = left_pos - slowdown_distance*step_per_mm;
-    int right_pos_slowdown = right_pos - slowdown_distance*step_per_mm;
+    float delta_slowdown = step_per_mm*slowdown_distance;
+    int left_pos_slowdown = left_pos - delta_slowdown;
+    int right_pos_slowdown = right_pos - delta_slowdown;
     while(left_encoder.getCount() < left_pos || right_encoder.getCount() < right_pos){
         if (
             is_normal_speed 
             && (left_encoder.getCount() > left_pos_slowdown)
             && (right_encoder.getCount() > right_pos_slowdown)
         ){
-            auto_speed = auto_speed * 0.6;
+            auto_speed = auto_forward_speed * 0.4;
             is_normal_speed = false;
         }
-   
+
         
         my_loop();
         if(emergency_stop){
+            Serial.println("Emergency stopped");
             motor_left.stop();
             motor_right.stop();
             return;
         }
         
         int direction = get_direction(Serial2);
+        if(direction != 0xFFF){
+            Serial.println("Ang: " + String(direction));
+            direction = standard_dir(target_dir, direction);
 
-        // void keep_forward(int direction, int speed){
-        if(target_dir > 1350 && direction < -450)       direction += 3600;
-        else if(target_dir > 450 && direction < -1350)  direction += 3600;
+            float delta_value = forward_pid.compute(target_dir, direction)/255;
+            #ifdef DEBUG
+                String message = String(delta_value*10) + '\t' + String(target_dir-direction);
+                SerialBT.println(message);
+            #endif
 
-        if(target_dir < -450 && direction > 450)
-            direction -= 3600;
-
-        float delta_value = forward_pid.compute(target_dir, direction)/255;
-        #ifdef DEBUG
-            String message = String(delta_value) + '\t' + String(target_dir-direction);
-            serialPort.println(message);
-        #endif
-
-        motor_left.setSpeed(auto_speed * (1 + delta_value));
-        motor_right.setSpeed(auto_speed * (1 - delta_value));
+            motor_left.setSpeed(auto_speed * (1 - delta_value));
+            motor_right.setSpeed(auto_speed * (1 + delta_value));
+        }
     }
 
     motor_left.stop();
     motor_right.stop();
+    Serial.println("Finish forward: " + String(distance));
+    Serial.println("Left current pos: " + String(left_encoder.getCount()));
+    Serial.println("Right current pos: " + String(right_encoder.getCount()));
 }
 
 
-#define auto_rotate_speed    50
-#define error_angle     20
-#define rotate_timeout  2000
+#define auto_rotate_speed    150
+#define error_angle     10
+#define rotate_timeout  3000
 void rote_CCW(){
-    target_dir -= 900;
+    target_dir += 900;
+    if(target_dir > 1800)   target_dir -= 3600;
     
     motor_left.stop();
     motor_right.setSpeed(auto_rotate_speed);
@@ -386,20 +398,29 @@ void rote_CCW(){
     while (millis() < time_out){
         my_loop();
         int direction = get_direction(Serial2);
-        if(abs(target_dir - direction) < error_angle){
-            motor_right.stop();
-            return;
+        if(direction != 0xFFF){
+            Serial.println("Ang: " + String(direction));
+            direction = standard_dir(target_dir, direction);
+            if(abs(target_dir - direction) < error_angle){
+                motor_right.stop();
+                Serial.println("Stoped: " + String(rotate_timeout - time_out + millis()));
+                return;
+            }
+
+            int rotate_speed = auto_rotate_speed * rotate_pid.compute(target_dir, direction)/255;
+            #ifdef DEBUG
+                String message = String(rotate_speed) + '\t' + String(target_dir-direction);
+                SerialBT.println(message);
+            #endif
+            motor_right.setSpeed(rotate_speed);
         }
-
-        int rotate_speed = auto_rotate_speed * rotate_pid.compute(target_dir, direction)/255;
-        motor_right.setSpeed(rotate_speed);
-
     }
     motor_left.stop();
     motor_right.stop();
 }
 void rote_CW(){
-    target_dir += 900;
+    target_dir -= 900;
+    if(target_dir < -1800)   target_dir += 3600;
     
     motor_right.stop();
     motor_left.setSpeed(auto_rotate_speed);
@@ -407,19 +428,36 @@ void rote_CW(){
     while (millis() < time_out){
         my_loop();
         int direction = get_direction(Serial2);
-        if(abs(target_dir - direction) < error_angle){
-            motor_left.stop();
-            return;
+        if(direction != 0xFFF){
+            Serial.println("Ang: " + String(direction));
+            direction = standard_dir(target_dir, direction);
+
+            if(abs(target_dir - direction) < error_angle){
+                motor_left.stop();
+                Serial.println("Stoped: " + String(rotate_timeout - time_out + millis()));
+                return;
+            }
+
+            int rotate_speed = -auto_rotate_speed * rotate_pid.compute(target_dir, direction)/255;
+            #ifdef DEBUG
+                String message = String(rotate_speed) + '\t' + String(target_dir-direction);
+                SerialBT.println(message);
+            #endif
+            motor_left.setSpeed(rotate_speed);
         }
-
-        int rotate_speed = -auto_rotate_speed * rotate_pid.compute(target_dir, direction)/255;
-        motor_left.setSpeed(rotate_speed);
-
     }
     motor_left.stop();
     motor_right.stop();
 }
 
+
+void reset_direction(HardwareSerial &serialPort = Serial){
+    Serial.println("Reset direction");
+    serialPort.println("AT+RST");
+    delay(1000);
+    serialPort.println("AT+RST");
+    target_dir = 0;
+}
 
 
 
@@ -432,7 +470,42 @@ void process_combo(int value){
 
     if(value == 16) forward_command("OA0");
     if(value == 17) forward_command("O21");
+
+    if(value == 20) auto_forward(1200);
+    if(value == 29) auto_forward(4000);
+    if(value == 21) rote_CCW();
+    if(value == 22) rote_CW();
 }
+
+#define ROTATE_PID
+void update_k_PID(String command){
+    float value = command.substring(1).toFloat();
+    #ifdef FORWARD_PID
+        if (command.startsWith("P")) {
+            forward_pid.set_P(value);
+        }
+        if (command.startsWith("I")) {
+            forward_pid.set_I(value);
+        }
+        if (command.startsWith("D")) {
+            forward_pid.set_D(value);
+        }
+    #endif
+    
+
+    #ifdef ROTATE_PID
+      if (command.startsWith("P")) {
+          rotate_pid.set_P(value);
+      }
+      if (command.startsWith("I")) {
+          rotate_pid.set_I(value);
+      }
+      if (command.startsWith("D")) {
+          rotate_pid.set_D(value);
+      }
+    #endif
+}
+
 
 
 void processSerialCommand(String command) {
@@ -460,6 +533,11 @@ void processSerialCommand(String command) {
         return;
     }
 
+    if(prefix == 'E'){
+        emergency_stop = true;
+        return;
+    }
+
     if(prefix == 'C'){  // Chassis direction
         int value = command.substring(1).toInt();
         process_combo(value);
@@ -481,6 +559,12 @@ void processSerialCommand(String command) {
         process_vaccum(command.charAt(1));
         return;
     }
+
+    if(prefix == 'k'){  // update_PID
+        update_k_PID(command.substring(1));
+        return;
+    }
+
 }
 
 #endif

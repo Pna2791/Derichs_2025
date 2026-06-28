@@ -29,10 +29,15 @@ int get_direction(HardwareSerial &serialPort = Serial) {
     return 0xFFF;
 }
 
-void reset_direction(HardwareSerial &serialPort = Serial){
-    serialPort.println("AT+RST");
-    delay(1000);
-    serialPort.println("AT+RST");
+int standard_dir(int target, int direction){
+    if(target > 1350 && direction < -450)       direction += 3600;
+    else if(target > 450 && direction < -1350)  direction += 3600;
+
+    if(target < -450 && direction > 450)
+        direction -= 3600;
+
+    return direction;
 }
+
 
 #endif

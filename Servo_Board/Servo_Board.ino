@@ -31,18 +31,49 @@ void signal_receriver(){
     }
 }
 
-void loop() {
-    signal_receriver();
+// State machine cho tính năng thả bóng
+int balls_to_drop = 0;
+int current_sequence_step = -1; 
+unsigned long next_action_time = 0;
+const unsigned long drop_interval = 400; // 0.4s
+
+void process_ball_drop() {
+    if (balls_to_drop > 0) {
+        if (millis() >= next_action_time) {
+            if (current_sequence_step == -1) {
+                current_sequence_step = 0;
+            }
+            
+            // 4 servos, mỗi servo có 2 trạng thái: đập xuống (0) và dở lên (90)
+            // Tổng cộng 8 bước (từ 0 đến 7)
+            int servo_idx = current_sequence_step / 2;
+            bool is_down = (current_sequence_step % 2 == 0);
+            
+            // Mặc định tất cả servo dở lên (90 độ) để giữ bóng
+            for (int i = 0; i < n_servos; i++) {
+                servos[i].write(90);
+            }
+            
+            // Servo nào đến lượt thì đập xuống (0 độ)
+            if (is_down) {
+                servos[servo_idx].write(0);
+            }
+            
+            next_action_time = millis() + drop_interval;
+            current_sequence_step++;
+            
+            // Hoàn thành 1 chu kỳ thả 1 quả bóng (đủ 4 servo)
+            if (current_sequence_step >= n_servos * 2) {
+                balls_to_drop--;
+                current_sequence_step = -1; // Reset để chuẩn bị thả quả tiếp theo
+            }
+        }
+    }
 }
 
-void drop_balls(int count) {
-    for (int i = 0; i < count; i++) {
-        // Giả sử Servo 0 (chân 14) là servo dùng để chặn/nhả bóng
-        servos[0].write(0);   // Mở cửa chặn để 1 quả bóng rơi xuống
-        delay(400);           // Đợi bóng rớt (thời gian này anh có thể tinh chỉnh lại)
-        servos[0].write(90);  // Đóng cửa chặn lại
-        delay(400);           // Đợi quả bóng tiếp theo lăn vào vị trí
-    }
+void loop() {
+    signal_receriver();
+    process_ball_drop();
 }
 
 void process_command(String command){
@@ -94,11 +125,11 @@ void process_command(String command){
         int num_balls = command.substring(1).toInt();
         if (num_balls > 0) {
             #ifdef DEBUG
-                Serial.print("Dropping ");
+                Serial.print("Queueing ");
                 Serial.print(num_balls);
-                Serial.println(" ball(s)...");
+                Serial.println(" ball(s) to drop...");
             #endif
-            drop_balls(num_balls);
+            balls_to_drop += num_balls;
         }
         return;
     }

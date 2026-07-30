@@ -44,15 +44,9 @@ void stop_chassis(){
 
 
 void process_command(String command){
-    command = command.trim();
+    command.trim();
+    if (command.length() == 0) return;
 
-    char prefix = command.charAt(0);
-
-    if(prefix == 'M'){  // Chassis
-        if(command.length() == 3)
-            forward_command(command);
-        return;
-    }
-
-    Serial.println("ERR: Invalid command");
+    // Chuyển tiếp TẤT CẢ lệnh xuống mạch phụ
+    forward_command(command);
 }

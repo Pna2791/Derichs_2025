@@ -12,7 +12,7 @@ Servo servos[n_servos];
 void setup() {
     for(int i=0; i<n_servos; i++){
         servos[i].attach(servo_pins[i]);
-        servos[i].write(90); // Mặc định về góc 90 độ
+        servos[i].write(0); // Mặc định 0 độ: Chặn xuống (Block)
     }
 
     Serial.begin(9600);
@@ -31,41 +31,42 @@ void signal_receriver(){
     }
 }
 
-// State machine cho tính năng thả bóng
+// State machine cho tính năng thả bóng (Kênh đào - Canal Lock)
 int balls_to_drop = 0;
 int current_sequence_step = -1; 
 unsigned long next_action_time = 0;
 const unsigned long drop_interval = 400; // 0.4s
 
+// Định nghĩa góc theo cơ khí thực tế:
+const int ANGLE_BLOCK = 0;   // Chặn xuống
+const int ANGLE_OPEN  = 90;  // Mở lên
+
 void process_ball_drop() {
     if (balls_to_drop > 0) {
         if (millis() >= next_action_time) {
             if (current_sequence_step == -1) {
-                current_sequence_step = 0;
+                current_sequence_step = 0; // Bắt đầu thả 1 quả
             }
             
-            // 4 servos, mỗi servo có 2 trạng thái: đập xuống (0) và dở lên (90)
-            // Tổng cộng 8 bước (từ 0 đến 7)
-            int servo_idx = current_sequence_step / 2;
-            bool is_down = (current_sequence_step % 2 == 0);
-            
-            // Mặc định tất cả servo dở lên (90 độ) để giữ bóng
+            // Đóng toàn bộ các servo để chặn bóng
             for (int i = 0; i < n_servos; i++) {
-                servos[i].write(90);
+                servos[i].write(ANGLE_BLOCK);
             }
             
-            // Servo nào đến lượt thì đập xuống (0 độ)
-            if (is_down) {
-                servos[servo_idx].write(0);
+            // Chỉ mở duy nhất 1 servo theo thứ tự từ dưới lên trên (0 -> 1 -> 2 -> 3)
+            // Bóng sẽ tuần tự trượt xuống điền vào chỗ trống
+            if (current_sequence_step < n_servos) {
+                servos[current_sequence_step].write(ANGLE_OPEN);
             }
             
             next_action_time = millis() + drop_interval;
             current_sequence_step++;
             
-            // Hoàn thành 1 chu kỳ thả 1 quả bóng (đủ 4 servo)
-            if (current_sequence_step >= n_servos * 2) {
+            // Cần (n_servos + 1) bước. Bước cuối cùng (step == n_servos) 
+            // để đảm bảo servo cuối cùng đóng lại hoàn toàn trước khi xong.
+            if (current_sequence_step > n_servos) {
                 balls_to_drop--;
-                current_sequence_step = -1; // Reset để chuẩn bị thả quả tiếp theo
+                current_sequence_step = -1; // Xong 1 quả, chờ thả quả tiếp theo
             }
         }
     }

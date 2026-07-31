@@ -384,6 +384,82 @@ void auto_forward(int distance){
     Serial.println("Right current pos: " + String(right_encoder.getCount()));
 }
 
+void auto_backward(int distance){
+    Serial.println("Auto backward: " + String(distance));
+    Serial.println("step_per_mm: " + String(step_per_mm));
+    forward_pid.reset();
+    float delta_plush = step_per_mm * (distance-brake_distance);
+    long left_pos = left_encoder.getCount() - delta_plush;
+    long right_pos = right_encoder.getCount() - delta_plush;
+    Serial.println("Left target pos: " + String(left_pos));
+    Serial.println("Right target pos: " + String(right_pos));
+
+    int auto_speed = -auto_forward_speed;
+    motor_left.setSpeed(auto_speed);
+    motor_right.setSpeed(auto_speed);
+
+    bool is_normal_speed = true;
+    float delta_slowdown = step_per_mm*slowdown_distance;
+    int left_pos_slowdown = left_pos + delta_slowdown;
+    int right_pos_slowdown = right_pos + delta_slowdown;
+    
+    while(left_encoder.getCount() > left_pos || right_encoder.getCount() > right_pos){
+        if (
+            is_normal_speed 
+            && (left_encoder.getCount() < left_pos_slowdown)
+            && (right_encoder.getCount() < right_pos_slowdown)
+        ){
+            auto_speed = -auto_forward_speed * 0.4;
+            is_normal_speed = false;
+        }
+
+        my_loop();
+        if(emergency_stop){
+            Serial.println("Emergency stopped");
+            motor_left.stop();
+            motor_right.stop();
+            return;
+        }
+        
+        int direction = get_direction(Serial2);
+        if(direction != 0xFFF){
+            Serial.println("Ang: " + String(direction));
+            direction = standard_dir(target_dir, direction);
+
+            // Công thức PID này vẫn giữ nguyên, vì delta_value vẫn có dấu phản ứng ngược 
+            // giống như tiến. Khi đi lùi (tốc độ âm), bánh trái chạy (âm * (1 - delta)) -> nhanh hơn
+            // nếu cần quay đầu về trái, tương đương xoay đuôi về phải, giúp khử góc lệch.
+            float delta_value = forward_pid.compute(target_dir, direction)/255;
+            #ifdef DEBUG
+                String message = String(delta_value*10) + '\t' + String(target_dir-direction);
+                SerialBT.println(message);
+            #endif
+
+            motor_left.setSpeed(auto_speed * (1 - delta_value));
+            motor_right.setSpeed(auto_speed * (1 + delta_value));
+        }
+    }
+
+    motor_left.stop();
+    motor_right.stop();
+    Serial.println("Finish backward: " + String(distance));
+    Serial.println("Left current pos: " + String(left_encoder.getCount()));
+    Serial.println("Right current pos: " + String(right_encoder.getCount()));
+}
+
+void auto_run_trajectory() {
+    Serial.println("Start blind run trajectory...");
+    // Ví dụ mẫu về một quỹ đạo chạy mù:
+    // auto_forward(1000);  // Tiến 1m
+    // rote_CCW();          // Xoay trái 90 độ
+    // auto_forward(500);   // Tiến 0.5m
+    // rote_CW();           // Xoay phải 90 độ
+    // auto_backward(1000); // Lùi 1m
+    
+    // Bạn có thể tự thêm các bước chạy cụ thể vào đây.
+    Serial.println("End blind run trajectory");
+}
+
 
 #define auto_rotate_speed    150
 #define error_angle     10
@@ -473,6 +549,8 @@ void process_combo(int value){
 
     if(value == 20) auto_forward(1200);
     if(value == 29) auto_forward(4000);
+    if(value == 30) auto_backward(1200);
+    if(value == 31) auto_run_trajectory();
     if(value == 21) rote_CCW();
     if(value == 22) rote_CW();
 }

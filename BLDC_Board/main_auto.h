@@ -377,20 +377,11 @@ void auto_forward(int distance){
             return;
         }
         
-        int direction = get_direction(Serial2);
-        if(direction != 0xFFF){
-            Serial.println("Ang: " + String(direction));
-            direction = standard_dir(target_dir, direction);
-
-            float delta_value = forward_pid.compute(target_dir, direction)/255;
-            #ifdef DEBUG
-                String message = String(delta_value*10) + '\t' + String(target_dir-direction);
-                SerialBT.println(message);
-            #endif
-
-            motor_left.setSpeed(auto_speed * (1 - delta_value));
-            motor_right.setSpeed(auto_speed * (1 + delta_value));
-        }
+        if (left_encoder.getCount() < left_pos) motor_left.setSpeed(auto_speed);
+        else motor_left.stop();
+        
+        if (right_encoder.getCount() < right_pos) motor_right.setSpeed(auto_speed);
+        else motor_right.stop();
     }
 
     motor_left.stop();
@@ -437,23 +428,11 @@ void auto_backward(int distance){
             return;
         }
         
-        int direction = get_direction(Serial2);
-        if(direction != 0xFFF){
-            Serial.println("Ang: " + String(direction));
-            direction = standard_dir(target_dir, direction);
-
-            // Công thức PID này vẫn giữ nguyên, vì delta_value vẫn có dấu phản ứng ngược 
-            // giống như tiến. Khi đi lùi (tốc độ âm), bánh trái chạy (âm * (1 - delta)) -> nhanh hơn
-            // nếu cần quay đầu về trái, tương đương xoay đuôi về phải, giúp khử góc lệch.
-            float delta_value = forward_pid.compute(target_dir, direction)/255;
-            #ifdef DEBUG
-                String message = String(delta_value*10) + '\t' + String(target_dir-direction);
-                SerialBT.println(message);
-            #endif
-
-            motor_left.setSpeed(auto_speed * (1 - delta_value));
-            motor_right.setSpeed(auto_speed * (1 + delta_value));
-        }
+        if (left_encoder.getCount() > left_pos) motor_left.setSpeed(auto_speed);
+        else motor_left.stop();
+        
+        if (right_encoder.getCount() > right_pos) motor_right.setSpeed(auto_speed);
+        else motor_right.stop();
     }
 
     motor_left.stop();
@@ -461,6 +440,58 @@ void auto_backward(int distance){
     Serial.println("Finish backward: " + String(distance));
     Serial.println("Left current pos: " + String(left_encoder.getCount()));
     Serial.println("Right current pos: " + String(right_encoder.getCount()));
+}
+
+#define ROBOT_WIDTH 400 // Khoảng cách giữa 2 bánh xe (mm)
+
+void auto_turn(int angle) {
+    Serial.println("Auto turn: " + String(angle));
+    float turn_distance = (abs(angle) / 360.0) * 3.1416 * ROBOT_WIDTH;
+    float delta_ticks = step_per_mm * turn_distance;
+    
+    long left_target, right_target;
+    int left_speed, right_speed;
+    
+    if (angle > 0) { // Rẽ phải: bánh trái tiến, bánh phải lùi
+        left_target = left_encoder.getCount() + delta_ticks;
+        right_target = right_encoder.getCount() - delta_ticks;
+        left_speed = auto_forward_speed;
+        right_speed = -auto_forward_speed;
+    } else { // Rẽ trái: bánh trái lùi, bánh phải tiến
+        left_target = left_encoder.getCount() - delta_ticks;
+        right_target = right_encoder.getCount() + delta_ticks;
+        left_speed = -auto_forward_speed;
+        right_speed = auto_forward_speed;
+    }
+    
+    bool left_done = false;
+    bool right_done = false;
+    
+    while (!left_done || !right_done) {
+        my_loop();
+        if(emergency_stop){
+            motor_left.stop();
+            motor_right.stop();
+            return;
+        }
+        
+        if (angle > 0) {
+            left_done = (left_encoder.getCount() >= left_target);
+            right_done = (right_encoder.getCount() <= right_target);
+        } else {
+            left_done = (left_encoder.getCount() <= left_target);
+            right_done = (right_encoder.getCount() >= right_target);
+        }
+        
+        if (!left_done) motor_left.setSpeed(left_speed);
+        else motor_left.stop();
+        
+        if (!right_done) motor_right.setSpeed(right_speed);
+        else motor_right.stop();
+    }
+    motor_left.stop();
+    motor_right.stop();
+    Serial.println("Finish turn");
 }
 
 void auto_run_trajectory() {

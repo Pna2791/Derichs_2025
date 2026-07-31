@@ -650,6 +650,11 @@ void processSerialCommand(String command) {
         return;
     }
 
+    if(prefix == 'D'){  // Drop balls
+        forward_command(command);
+        return;
+    }
+
     if(prefix == 'T'){  // ON/OFF
         process_vaccum(command.charAt(1));
         return;

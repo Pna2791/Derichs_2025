@@ -54,7 +54,14 @@ void processSerialCommand(String command);
 void setup() {
     Serial.begin(115200);
     SerialBT.begin(ROBOT_NAME); // Set the Bluetooth device name
-    Serial2.begin(115200, SERIAL_8N1, 2, 15); // RX, TX use for Hi229
+    
+    // Serial2 dùng cho cảm biến góc Hi229 (như cũ)
+    Serial2.begin(115200, SERIAL_8N1, 2, 15); // RX=2, TX=15
+    
+    // Serial1 dùng để giao tiếp UART với Mainboard (do Serial2 đã bị chiếm)
+    // Cắm dây RX của Mainboard vào chân 32 của ESP32.
+    // Cắm dây TX của Mainboard vào chân 33 của ESP32 (nếu cần đọc ngược lại).
+    Serial1.begin(9600, SERIAL_8N1, 33, 32); // RX=33, TX=32
 
     slider_encoder.begin();
     left_encoder.begin();
@@ -69,9 +76,9 @@ void setup() {
     Serial.println("Started");
 }
 
-
 void forward_command(String command){
-    Serial.println(command);
+    Serial.println(command);      // In ra USB để debug
+    Serial1.println(command);     // Gửi xuống Mainboard qua Serial1
 }
 
 
@@ -108,7 +115,7 @@ void update_servo(){
 
 void signal_receriver(){
     static String command_0 = "";
-    static String command_2 = "";
+    static String command_1 = "";
     static String command_BT = "";
 
     // Check for serial commands
@@ -121,7 +128,17 @@ void signal_receriver(){
         }else   command_0 += ch;
     }
 
-    // Check for serial commands
+    // Check for Mainboard commands (nếu Mainboard có phản hồi)
+    if (Serial1.available()) {
+        char ch = Serial1.read();
+        if(ch == '\n'){
+            String command = command_1;
+            command_1 = "";
+            processSerialCommand(command);
+        }else   command_1 += ch;
+    }
+
+    // Check for Bluetooth commands
     if (SerialBT.available()) {
         char ch = SerialBT.read();
         if(ch == '\n'){

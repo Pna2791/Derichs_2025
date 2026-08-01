@@ -496,6 +496,16 @@ void auto_run_trajectory() {
     Serial.println("End blind run trajectory");
 }
 
+void auto_custom_combo_32() {
+    Serial.println("Start custom combo 32...");
+    auto_forward(4000);   // Chạy tới 400cm
+    auto_turn(90);        // Xoay 90 độ sang phải
+    auto_forward(1000);   // Chạy tới 100cm
+    auto_turn(-90);       // Xoay 90 độ sang trái
+    auto_backward(1260);  // Chạy lùi 126cm
+    auto_forward(4520);   // Chạy tới 452cm
+    Serial.println("End custom combo 32");
+}
 
 #define auto_rotate_speed    150
 #define error_angle     10
@@ -587,6 +597,7 @@ void process_combo(int value){
     if(value == 29) auto_forward(4000);
     if(value == 30) auto_backward(1200);
     if(value == 31) auto_run_trajectory();
+    if(value == 32) auto_custom_combo_32();
     if(value == 21) rote_CCW();
     if(value == 22) rote_CW();
 }

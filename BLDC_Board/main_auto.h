@@ -496,14 +496,11 @@ void auto_turn(int angle) {
 
 void auto_run_trajectory() {
     Serial.println("Start blind run trajectory...");
-    // Ví dụ mẫu về một quỹ đạo chạy mù:
-    // auto_forward(1000);  // Tiến 1m
-    // rote_CCW();          // Xoay trái 90 độ
-    // auto_forward(500);   // Tiến 0.5m
-    // rote_CW();           // Xoay phải 90 độ
-    // auto_backward(1000); // Lùi 1m
     
-    // Bạn có thể tự thêm các bước chạy cụ thể vào đây.
+    auto_forward(1000);   // Tiến 1m
+    auto_turn(-90);       // Rẽ trái 90 độ (dùng hàm rẽ mù)
+    auto_backward(500);   // Lùi 0.5m
+    
     Serial.println("End blind run trajectory");
 }
 

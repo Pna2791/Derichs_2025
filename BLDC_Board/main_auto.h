@@ -396,8 +396,8 @@ void auto_backward(int distance){
     Serial.println("step_per_mm: " + String(step_per_mm));
     forward_pid.reset();
     float delta_plush = step_per_mm * (distance-brake_distance);
-    long left_pos = left_encoder.getCount() - delta_plush;
-    long right_pos = right_encoder.getCount() - delta_plush;
+    long left_pos = left_encoder.getCount() + delta_plush;
+    long right_pos = right_encoder.getCount() + delta_plush;
     Serial.println("Left target pos: " + String(left_pos));
     Serial.println("Right target pos: " + String(right_pos));
 
@@ -407,14 +407,14 @@ void auto_backward(int distance){
 
     bool is_normal_speed = true;
     float delta_slowdown = step_per_mm*slowdown_distance;
-    int left_pos_slowdown = left_pos + delta_slowdown;
-    int right_pos_slowdown = right_pos + delta_slowdown;
+    int left_pos_slowdown = left_pos - delta_slowdown;
+    int right_pos_slowdown = right_pos - delta_slowdown;
     
-    while(left_encoder.getCount() > left_pos || right_encoder.getCount() > right_pos){
+    while(left_encoder.getCount() < left_pos || right_encoder.getCount() < right_pos){
         if (
             is_normal_speed 
-            && (left_encoder.getCount() < left_pos_slowdown)
-            && (right_encoder.getCount() < right_pos_slowdown)
+            && (left_encoder.getCount() > left_pos_slowdown)
+            && (right_encoder.getCount() > right_pos_slowdown)
         ){
             auto_speed = -auto_forward_speed * 0.4;
             is_normal_speed = false;
@@ -428,10 +428,10 @@ void auto_backward(int distance){
             return;
         }
         
-        if (left_encoder.getCount() > left_pos) motor_left.setSpeed(auto_speed);
+        if (left_encoder.getCount() < left_pos) motor_left.setSpeed(auto_speed);
         else motor_left.stop();
         
-        if (right_encoder.getCount() > right_pos) motor_right.setSpeed(auto_speed);
+        if (right_encoder.getCount() < right_pos) motor_right.setSpeed(auto_speed);
         else motor_right.stop();
     }
 
@@ -449,17 +449,14 @@ void auto_turn(int angle) {
     float turn_distance = (abs(angle) / 360.0) * 3.1416 * ROBOT_WIDTH;
     float delta_ticks = step_per_mm * turn_distance;
     
-    long left_target, right_target;
+    long left_target = left_encoder.getCount() + delta_ticks;
+    long right_target = right_encoder.getCount() + delta_ticks;
     int left_speed, right_speed;
     
     if (angle > 0) { // Rẽ phải: bánh trái tiến, bánh phải lùi
-        left_target = left_encoder.getCount() + delta_ticks;
-        right_target = right_encoder.getCount() - delta_ticks;
         left_speed = auto_forward_speed;
         right_speed = -auto_forward_speed;
     } else { // Rẽ trái: bánh trái lùi, bánh phải tiến
-        left_target = left_encoder.getCount() - delta_ticks;
-        right_target = right_encoder.getCount() + delta_ticks;
         left_speed = -auto_forward_speed;
         right_speed = auto_forward_speed;
     }
@@ -475,13 +472,8 @@ void auto_turn(int angle) {
             return;
         }
         
-        if (angle > 0) {
-            left_done = (left_encoder.getCount() >= left_target);
-            right_done = (right_encoder.getCount() <= right_target);
-        } else {
-            left_done = (left_encoder.getCount() <= left_target);
-            right_done = (right_encoder.getCount() >= right_target);
-        }
+        left_done = (left_encoder.getCount() >= left_target);
+        right_done = (right_encoder.getCount() >= right_target);
         
         if (!left_done) motor_left.setSpeed(left_speed);
         else motor_left.stop();

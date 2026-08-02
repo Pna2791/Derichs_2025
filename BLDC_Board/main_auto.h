@@ -246,7 +246,7 @@ void auto_forward(int distance){
             Serial.println("Ang: " + String(direction));
             direction = standard_dir(target_dir, direction);
 
-            float delta_value*dir = forward_pid.compute(target_dir, direction)/255;
+            float delta_value = forward_pid.compute(target_dir, direction)/255*dir;
             #ifdef DEBUG
                 String message = String(delta_value*10) + '\t' + String(target_dir-direction);
                 SerialBT.println(message);

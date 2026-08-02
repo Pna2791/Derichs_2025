@@ -200,8 +200,12 @@ const float step_per_mm = 1.0f * GEAR_RATIO * STEPS_PER_REVOLUTION / WHEEL_DIAME
 #define brake_distance      10
 #define slowdown_distance   250
 #define auto_forward_speed  120
+// distance > 0: forward, distance < 0: backward (encoders count up only)
 void auto_forward(int distance){
-    Serial.println("Auto forward: " + String(distance));
+    int dir = (distance >= 0) ? 1 : -1;
+    distance = abs(distance);
+
+    Serial.println("Auto forward: " + String(dir * distance));
     Serial.println("step_per_mm: " + String(step_per_mm));
     forward_pid.reset();
     float delta_plush = step_per_mm * (distance-brake_distance);
@@ -210,7 +214,7 @@ void auto_forward(int distance){
     Serial.println("Left target pos: " + String(left_pos));
     Serial.println("Right target pos: " + String(right_pos));
 
-    int auto_speed = auto_forward_speed;
+    int auto_speed = dir * auto_forward_speed;
     motor_left.setSpeed(auto_speed);
     motor_right.setSpeed(auto_speed);
 
@@ -224,7 +228,7 @@ void auto_forward(int distance){
             && (left_encoder.getCount() > left_pos_slowdown)
             && (right_encoder.getCount() > right_pos_slowdown)
         ){
-            auto_speed = auto_forward_speed * 0.4;
+            auto_speed = dir * auto_forward_speed * 0.4;
             is_normal_speed = false;
         }
 
@@ -255,74 +259,7 @@ void auto_forward(int distance){
 
     motor_left.stop();
     motor_right.stop();
-    Serial.println("Finish forward: " + String(distance));
-    Serial.println("Left current pos: " + String(left_encoder.getCount()));
-    Serial.println("Right current pos: " + String(right_encoder.getCount()));
-}
-
-// Revised function: auto_backward for counting up-only encoders (not AB encoder)
-void auto_backward(int distance){
-    Serial.println("Auto backward (count up only): " + String(distance));
-    Serial.println("step_per_mm: " + String(step_per_mm));
-    forward_pid.reset();
-
-    float delta_plush = step_per_mm * (distance - brake_distance);
-    long left_start = left_encoder.getCount();
-    long right_start = right_encoder.getCount();
-    long left_target = left_start + delta_plush;
-    long right_target = right_start + delta_plush;
-
-    Serial.println("Left target pos: " + String(left_target));
-    Serial.println("Right target pos: " + String(right_target));
-
-    int auto_speed = auto_forward_speed; // Move "backward" but encoder counts still increase
-    motor_left.setSpeed(auto_speed);
-    motor_right.setSpeed(auto_speed);
-
-    bool is_normal_speed = true;
-    float delta_slowdown = step_per_mm * slowdown_distance;
-    int left_pos_slowdown = left_target - delta_slowdown;
-    int right_pos_slowdown = right_target - delta_slowdown;
-
-    // Now, since encoder only counts up, we count up from start towards target for "backward" motion
-    while(left_encoder.getCount() < left_target || right_encoder.getCount() < right_target){
-        if (
-            is_normal_speed
-            && (left_encoder.getCount() > left_pos_slowdown)
-            && (right_encoder.getCount() > right_pos_slowdown)
-        ){
-            auto_speed = auto_forward_speed * 0.4;
-            is_normal_speed = false;
-        }
-
-        my_loop();
-        if(emergency_stop){
-            Serial.println("Emergency stopped");
-            motor_left.stop();
-            motor_right.stop();
-            return;
-        }
-
-        int direction = get_direction(Serial2);
-        if(direction != 0xFFF){
-            Serial.println("Ang: " + String(direction));
-            direction = standard_dir(target_dir, direction);
-
-            float delta_value = forward_pid.compute(target_dir, direction)/255;
-            #ifdef DEBUG
-                String message = String(delta_value*10) + '\t' + String(target_dir-direction);
-                SerialBT.println(message);
-            #endif
-
-            // Correction remains the same direction as forward for up-counting encoders
-            motor_left.setSpeed(auto_speed * (1 - delta_value));
-            motor_right.setSpeed(auto_speed * (1 + delta_value));
-        }
-    }
-
-    motor_left.stop();
-    motor_right.stop();
-    Serial.println("Finish backward (count up only): " + String(distance));
+    Serial.println("Finish forward: " + String(dir * distance));
     Serial.println("Left current pos: " + String(left_encoder.getCount()));
     Serial.println("Right current pos: " + String(right_encoder.getCount()));
 }
@@ -410,7 +347,7 @@ void process_combo(int value){
     if(value == 17) forward_command("O21");
 
     if(value == 20) auto_forward(1200);
-    if(value == 25) auto_backward(1200);
+    if(value == 25) auto_forward(-1200);
     if(value == 29) auto_forward(4000);
     if(value == 21) rote_CCW();
     if(value == 22) rote_CW();

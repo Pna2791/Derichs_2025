@@ -200,60 +200,76 @@ const float step_per_mm = 1.0f * GEAR_RATIO * STEPS_PER_REVOLUTION / WHEEL_DIAME
 #define brake_distance      10
 #define slowdown_distance   250
 #define auto_forward_speed  240
+
+#define SOFT_START_TIME_MS  1000  // Soft start duration in milliseconds
+
 // distance > 0: forward, distance < 0: backward (encoders count up only)
-void auto_forward(int distance){
+void auto_forward(int distance) {
     int dir = (distance >= 0) ? 1 : -1;
     distance = abs(distance);
 
     Serial.println("Auto forward: " + String(dir * distance));
     Serial.println("step_per_mm: " + String(step_per_mm));
     forward_pid.reset();
-    float delta_plush = step_per_mm * (distance-brake_distance);
+    float delta_plush = step_per_mm * (distance - brake_distance);
     long left_pos = left_encoder.getCount() + delta_plush;
     long right_pos = right_encoder.getCount() + delta_plush;
     Serial.println("Left target pos: " + String(left_pos));
     Serial.println("Right target pos: " + String(right_pos));
 
     int auto_speed = dir * auto_forward_speed;
-    motor_left.setSpeed(auto_speed);
-    motor_right.setSpeed(auto_speed);
 
     bool is_normal_speed = true;
-    float delta_slowdown = step_per_mm*slowdown_distance;
+    float delta_slowdown = step_per_mm * slowdown_distance;
     int left_pos_slowdown = left_pos - delta_slowdown;
     int right_pos_slowdown = right_pos - delta_slowdown;
-    while(left_encoder.getCount() < left_pos || right_encoder.getCount() < right_pos){
-        if (
-            is_normal_speed 
-            && (left_encoder.getCount() > left_pos_slowdown)
-            && (right_encoder.getCount() > right_pos_slowdown)
-        ){
-            auto_speed = dir * auto_forward_speed * 0.4;
-            is_normal_speed = false;
-        }
 
-        
+    unsigned long start_time = millis();
+    while (left_encoder.getCount() < left_pos || right_encoder.getCount() < right_pos) {
         my_loop();
-        if(emergency_stop){
+        if (emergency_stop) {
             Serial.println("Emergency stopped");
             motor_left.stop();
             motor_right.stop();
             return;
         }
-        
+
+        unsigned long now = millis();
+        float soft_start_scale = 1.0f;
+        if (now - start_time < SOFT_START_TIME_MS) {
+            soft_start_scale = float(now - start_time) / SOFT_START_TIME_MS;
+            if (soft_start_scale < 0.2f) soft_start_scale = 0.2f; // Minimum to overcome static friction
+        }
+
         int direction = get_direction(Serial2);
-        if(direction != 0xFFF){
+        if (
+            is_normal_speed
+            && (left_encoder.getCount() > left_pos_slowdown)
+            && (right_encoder.getCount() > right_pos_slowdown)
+        ) {
+            auto_speed = dir * auto_forward_speed * 0.4;
+            is_normal_speed = false;
+        }
+
+        // Calculate target "soft started" speed
+        int speed = auto_speed * soft_start_scale;
+
+        if (direction != 0xFFF) {
             Serial.println("Ang: " + String(direction));
             direction = standard_dir(target_dir, direction);
 
-            float delta_value = forward_pid.compute(target_dir, direction)/255*dir;
+            float delta_value = forward_pid.compute(target_dir, direction) / 255 * dir;
             #ifdef DEBUG
-                String message = String(delta_value*10) + '\t' + String(target_dir-direction);
+                String message = String(delta_value*10) + '\t' + String(target_dir - direction);
                 SerialBT.println(message);
             #endif
 
-            motor_left.setSpeed(auto_speed * (1 - delta_value));
-            motor_right.setSpeed(auto_speed * (1 + delta_value));
+            motor_left.setSpeed(speed * (1 - delta_value));
+            motor_right.setSpeed(speed * (1 + delta_value));
+        } else {
+            // No direction available, just set soft start balanced speed
+            motor_left.setSpeed(speed);
+            motor_right.setSpeed(speed);
         }
     }
 
@@ -263,7 +279,6 @@ void auto_forward(int distance){
     Serial.println("Left current pos: " + String(left_encoder.getCount()));
     Serial.println("Right current pos: " + String(right_encoder.getCount()));
 }
-
 
 #define auto_rotate_speed    150
 #define error_angle     50

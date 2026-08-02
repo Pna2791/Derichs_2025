@@ -199,7 +199,7 @@ const float step_per_mm = 1.0f * GEAR_RATIO * STEPS_PER_REVOLUTION / WHEEL_DIAME
 
 #define brake_distance      10
 #define slowdown_distance   250
-#define auto_forward_speed  120
+#define auto_forward_speed  240
 // distance > 0: forward, distance < 0: backward (encoders count up only)
 void auto_forward(int distance){
     int dir = (distance >= 0) ? 1 : -1;
@@ -266,8 +266,8 @@ void auto_forward(int distance){
 
 
 #define auto_rotate_speed    150
-#define error_angle     10
-#define rotate_timeout  3000
+#define error_angle     50
+#define rotate_timeout  1000
 void rote_CCW(){
     target_dir += 900;
     if(target_dir > 1800)   target_dir -= 3600;
@@ -353,6 +353,9 @@ void simple_strategy(){
     auto_forward(1000);
     my_delay(1000);
     auto_forward(1000);
+
+    my_delay(1000);
+    auto_forward(-4500);
 }
 
 

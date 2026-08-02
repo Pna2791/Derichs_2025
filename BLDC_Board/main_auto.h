@@ -260,33 +260,38 @@ void auto_forward(int distance){
     Serial.println("Right current pos: " + String(right_encoder.getCount()));
 }
 
-// New function: auto_backward for automatic mode (Robocon), 2 motor with IMU
+// Revised function: auto_backward for counting up-only encoders (not AB encoder)
 void auto_backward(int distance){
-    Serial.println("Auto backward: " + String(distance));
+    Serial.println("Auto backward (count up only): " + String(distance));
     Serial.println("step_per_mm: " + String(step_per_mm));
     forward_pid.reset();
-    float delta_plush = step_per_mm * (distance-brake_distance);
-    long left_target = left_encoder.getCount() - delta_plush;
-    long right_target = right_encoder.getCount() - delta_plush;
+
+    float delta_plush = step_per_mm * (distance - brake_distance);
+    long left_start = left_encoder.getCount();
+    long right_start = right_encoder.getCount();
+    long left_target = left_start + delta_plush;
+    long right_target = right_start + delta_plush;
+
     Serial.println("Left target pos: " + String(left_target));
     Serial.println("Right target pos: " + String(right_target));
 
-    int auto_speed = -auto_forward_speed; // Negative speed for backward
+    int auto_speed = auto_forward_speed; // Move "backward" but encoder counts still increase
     motor_left.setSpeed(auto_speed);
     motor_right.setSpeed(auto_speed);
 
     bool is_normal_speed = true;
     float delta_slowdown = step_per_mm * slowdown_distance;
-    int left_pos_slowdown = left_target + delta_slowdown;   // + (since both are negative direction)
-    int right_pos_slowdown = right_target + delta_slowdown;
-    // In backward, we approach target when encoder counts decrease to <= target
-    while(left_encoder.getCount() > left_target || right_encoder.getCount() > right_target){
+    int left_pos_slowdown = left_target - delta_slowdown;
+    int right_pos_slowdown = right_target - delta_slowdown;
+
+    // Now, since encoder only counts up, we count up from start towards target for "backward" motion
+    while(left_encoder.getCount() < left_target || right_encoder.getCount() < right_target){
         if (
             is_normal_speed
-            && (left_encoder.getCount() < left_pos_slowdown)
-            && (right_encoder.getCount() < right_pos_slowdown)
+            && (left_encoder.getCount() > left_pos_slowdown)
+            && (right_encoder.getCount() > right_pos_slowdown)
         ){
-            auto_speed = -auto_forward_speed * 0.4;
+            auto_speed = auto_forward_speed * 0.4;
             is_normal_speed = false;
         }
 
@@ -309,15 +314,15 @@ void auto_backward(int distance){
                 SerialBT.println(message);
             #endif
 
-            // For backward, reverse the correction (swap +/-)
-            motor_left.setSpeed(auto_speed * (1 + delta_value));
-            motor_right.setSpeed(auto_speed * (1 - delta_value));
+            // Correction remains the same direction as forward for up-counting encoders
+            motor_left.setSpeed(auto_speed * (1 - delta_value));
+            motor_right.setSpeed(auto_speed * (1 + delta_value));
         }
     }
 
     motor_left.stop();
     motor_right.stop();
-    Serial.println("Finish backward: " + String(distance));
+    Serial.println("Finish backward (count up only): " + String(distance));
     Serial.println("Left current pos: " + String(left_encoder.getCount()));
     Serial.println("Right current pos: " + String(right_encoder.getCount()));
 }

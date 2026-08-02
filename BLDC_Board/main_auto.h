@@ -339,6 +339,21 @@ void reset_direction(HardwareSerial &serialPort = Serial){
     target_dir = 0;
 }
 
+void simple_strategy(){
+    auto_forward(3600);
+    rote_CW();
+    my_delay(5000);
+
+    auto_forward(1200);
+    rote_CCW();
+    auto_forward(-1260);
+    my_delay(1000);
+    auto_forward(1260*2);
+    my_delay(1000);
+    auto_forward(1000);
+    my_delay(1000);
+    auto_forward(1000);
+}
 
 
 void process_combo(int value){
@@ -351,6 +366,8 @@ void process_combo(int value){
     if(value == 29) auto_forward(4000);
     if(value == 21) rote_CCW();
     if(value == 22) rote_CW();
+
+    if(value == 30) simple_strategy();
 }
 
 #define ROTATE_PID

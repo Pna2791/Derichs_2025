@@ -21,10 +21,14 @@ BluetoothSerial SerialBT;
 #include <PID_Control.h>
 #include <BLDC_servo.h>
 #include "hi229.h"
+#include "LineSensor.h"
 
 
-Encoder     left_encoder(13);
-Encoder     right_encoder(18);
+Encoder     left_encoder(LEFT_ENCODER_PIN);
+Encoder     right_encoder(RIGHT_ENCODER_PIN);
+
+// Khởi tạo dàn 4 mắt cảm biến KY-038 tầng 1
+LineSensor  line_sensor(LINE_PIN_L2, LINE_PIN_L1, LINE_PIN_R1, LINE_PIN_R2, LINE_SENSOR_POLARITY);
 
 //           pwm, dir, brake, speed, dir, brake
 BLDC_Motor motor_left( 16,  5, 17, 1, 0, 1);
@@ -32,6 +36,7 @@ BLDC_Motor motor_right(22, 23, 19, 1, 1, 1);
 
 PIDController   forward_pid(10, 2, 1, -192, 192); // 315rpm speed 100-150
 PIDController   rotate_pid(2, 0.0, 0.15, -255, 255); // 315rpm speed 100-150
+PIDController   line_pid(120, 0.0, 10, -180, 180);  // PID bám line
 
 
 bool servo_enable = false;
@@ -49,13 +54,15 @@ void setup() {
 
     left_encoder.begin();
     right_encoder.begin();
+    line_sensor.begin();
 
     motor_left.stop();
     motor_right.stop();
 
     delay(1000);
-    Serial.println("Started");
+    Serial.println("Started with Line Sensor Support");
 }
+
 
 
 void forward_command(String command){
@@ -356,6 +363,225 @@ void simple_strategy(){
 }
 
 
+// ==================== LINE SENSOR NAVIGATION FUNCTIONS ====================
+
+/**
+ * @brief Chạy tiến kết hợp:
+ *        - 2 mắt giữa L1/R1 kẹp vạch để tự động căn tâm (Line Centering).
+ *        - IMU Hi229 giữ hướng thẳng khi line nằm lọt giữa L1 và R1.
+ *        - 2 mắt ngoài L2/R2 đếm số vạch ngang / nút giao trên sa bàn để dừng chuẩn 100%.
+ * @param target_lines Số vạch ngang cần đi qua để dừng xe
+ * @param speed Tốc độ di chuyển
+ * @param timeout_ms Thời gian tối đa chống kẹt/tuột line
+ * @return true nếu đếm đủ số vạch và dừng thành công, false nếu timeout
+ */
+bool auto_forward_by_lines(int target_lines, int speed = LINE_SEARCH_SPEED, uint32_t timeout_ms = LINE_TIMEOUT_MS) {
+    Serial.println("Auto forward by lines: Target " + String(target_lines) + " lines");
+    forward_pid.reset();
+    line_pid.reset();
+    line_sensor.resetLineCounterState();
+
+    int lines_passed = 0;
+    int auto_speed = speed;
+    motor_left.setSpeed(auto_speed);
+    motor_right.setSpeed(auto_speed);
+
+    long time_out = millis() + timeout_ms;
+
+    while (millis() < time_out) {
+        my_loop();
+        if (emergency_stop) {
+            Serial.println("Emergency stopped in line count");
+            motor_left.stop();
+            motor_right.stop();
+            return false;
+        }
+
+        // 1. Kiểm tra phát hiện vạch ngang mới qua 2 mắt ngoài L2 / R2
+        if (line_sensor.checkNewCrossLine()) {
+            lines_passed++;
+            Serial.println(">>> PASSED LINE: " + String(lines_passed) + " / " + String(target_lines) + 
+                           " (Pos L=" + String(left_encoder.getCount()) + " R=" + String(right_encoder.getCount()) + ")");
+            #ifdef DEBUG
+                SerialBT.println("Line: " + String(lines_passed) + "/" + String(target_lines));
+            #endif
+
+            // Đã đạt đủ số vạch ngang mục tiêu -> Phanh khẩn cấp & căn góc
+            if (lines_passed >= target_lines) {
+                motor_left.stop();
+                motor_right.stop();
+                Serial.println(">>> REACHED TARGET NODE! Stopped perfectly.");
+                delay(50);
+                auto_align_to_line(LINE_SLOW_SPEED, 1500); // Tự động căn vuông góc 90 độ với vạch
+                return true;
+            }
+        }
+
+        // 2. Điều hướng: Kết hợp bám tâm (L1, R1 kẹp vạch) và IMU Hi229
+        float steer_err = line_sensor.getSteeringError(); // L1 chạm -> -1.0 (lái trái), R1 chạm -> +1.0 (lái phải), giữa -> 0.0
+        float delta_value = 0.0f;
+
+        if (steer_err != 0.0f) {
+            // Khi bị lệch khỏi khe giữa -> Bẻ lái sửa tâm theo cảm biến
+            delta_value = line_pid.compute(0, steer_err * 100.0f) / 255.0f;
+        } else {
+            // Khi đang ở ngay chính giữa khe -> Dùng IMU Hi229 giữ hướng thẳng hoàn hảo
+            int direction = get_direction(Serial2);
+            if (direction != 0xFFF) {
+                direction = standard_dir(target_dir, direction);
+                delta_value = forward_pid.compute(target_dir, direction) / 255.0f;
+            }
+        }
+
+        motor_left.setSpeed(auto_speed * (1.0f - delta_value));
+        motor_right.setSpeed(auto_speed * (1.0f + delta_value));
+    }
+
+    motor_left.stop();
+    motor_right.stop();
+    Serial.println("Line count timeout! Passed " + String(lines_passed) + "/" + String(target_lines));
+    return false;
+}
+
+/**
+ * @brief Tiến thẳng kết hợp giữ góc IMU và dừng ngay khi phát hiện vạch line đầu tiên
+ */
+bool auto_forward_until_line(int max_distance, int speed = LINE_SEARCH_SPEED, uint32_t timeout_ms = LINE_TIMEOUT_MS) {
+    return auto_forward_by_lines(1, speed, timeout_ms);
+}
+
+/**
+ * @brief Tự động căn vuông góc 90 độ với vạch ngang (Squaring to line)
+ *        Bánh bên nào chưa chạm vạch ngoài thì nhích tiếp, bên nào chạm rồi thì dừng lại.
+ */
+bool auto_align_to_line(int align_speed = LINE_SLOW_SPEED, uint32_t timeout_ms = 3000) {
+    Serial.println("Aligning to line...");
+    long time_out = millis() + timeout_ms;
+
+    while (millis() < time_out) {
+        my_loop();
+        if (emergency_stop) {
+            motor_left.stop();
+            motor_right.stop();
+            return false;
+        }
+
+        bool left_on = line_sensor.isLeftTriggered();   // Mắt ngoài L2
+        bool right_on = line_sensor.isRightTriggered(); // Mắt ngoài R2
+
+        // Cả 2 bên đều đã chạm vạch line -> Đã vuông góc 90 độ hoàn hảo
+        if (left_on && right_on) {
+            motor_left.stop();
+            motor_right.stop();
+            Serial.println("Line alignment complete (90 deg calibrated)!");
+            return true;
+        }
+
+        // Bên trái đã chạm line -> dừng bánh trái, nhích bánh phải
+        if (left_on && !right_on) {
+            motor_left.stop();
+            motor_right.setSpeed(align_speed);
+        }
+        // Bên phải đã chạm line -> dừng bánh phải, nhích bánh trái
+        else if (!left_on && right_on) {
+            motor_right.stop();
+            motor_left.setSpeed(align_speed);
+        }
+        // Cả 2 chưa chạm -> cùng nhích chậm về phía trước
+        else {
+            motor_left.setSpeed(align_speed);
+            motor_right.setSpeed(align_speed);
+        }
+    }
+
+    motor_left.stop();
+    motor_right.stop();
+    Serial.println("Align timeout");
+    return false;
+}
+
+/**
+ * @brief Chạy bám theo đường line bằng thuật toán PID
+ * @param distance_mm Quãng đường bám line (mm)
+ * @param follow_speed Tốc độ di chuyển
+ * @param timeout_ms Thời gian tối đa
+ */
+bool auto_follow_line(int distance_mm, int follow_speed = LINE_SEARCH_SPEED, uint32_t timeout_ms = LINE_TIMEOUT_MS) {
+    Serial.println("Auto follow line: " + String(distance_mm) + " mm");
+    line_pid.reset();
+
+    float delta_plush = step_per_mm * distance_mm;
+    long left_pos = left_encoder.getCount() + delta_plush;
+    long right_pos = right_encoder.getCount() + delta_plush;
+
+    long time_out = millis() + timeout_ms;
+
+    while (millis() < time_out) {
+        my_loop();
+        if (emergency_stop) {
+            motor_left.stop();
+            motor_right.stop();
+            return false;
+        }
+
+        // Đạt đủ quãng đường yêu cầu
+        if (left_encoder.getCount() >= left_pos || right_encoder.getCount() >= right_pos) {
+            break;
+        }
+
+        // Sai số căn tâm: L1 chạm -> -1.0 (lái trái), R1 chạm -> +1.0 (lái phải)
+        float steer_error = line_sensor.getSteeringError();
+        float delta_val = line_pid.compute(0, steer_error * 100.0f) / 255.0f;
+
+        motor_left.setSpeed(follow_speed * (1.0f - delta_val));
+        motor_right.setSpeed(follow_speed * (1.0f + delta_val));
+    }
+
+    motor_left.stop();
+    motor_right.stop();
+    Serial.println("Finish follow line");
+    return true;
+}
+
+/**
+ * @brief Chiến thuật Sa bàn chuẩn xác tuyệt đối: Đếm vạch ngang thay vì chạy mù khoảng cách
+ *        Ánh xạ trực tiếp từ kích thước sa bàn 800x800cm và các mốc trong simple_strategy()
+ */
+void line_assisted_strategy() {
+    Serial.println("Starting Line Assisted Strategy (Field 800x800cm)");
+
+    // 1. Chặng 1: Xuất phát chạy qua 3 vạch ngang (thay cho auto_forward(3600))
+    auto_forward_by_lines(3, LINE_SEARCH_SPEED, 8000);
+    my_delay(500);
+
+    // 2. Chặng 2: Xoay phải 90 độ, chạy qua 1 vạch ngang (thay cho auto_forward(1200))
+    rote_CW();
+    my_delay(500);
+    auto_forward_by_lines(1, LINE_SEARCH_SPEED, 4000);
+    my_delay(5000);
+
+    // 3. Chặng 3: Xoay trái 90 độ, lùi 1 khoảng 1260mm
+    rote_CCW();
+    my_delay(500);
+    auto_forward(-1260);
+    my_delay(1000);
+
+    // 4. Chặng 4: Tiến qua 2 vạch ngang (thay cho auto_forward(1260*2 = 2520mm))
+    auto_forward_by_lines(2, LINE_SEARCH_SPEED, 6000);
+    my_delay(1000);
+
+    // 5. Chặng 5: Tiến qua 1 vạch ngang (thay cho auto_forward(1000))
+    auto_forward_by_lines(1, LINE_SEARCH_SPEED, 4000);
+    my_delay(1000);
+
+    // 6. Chặng 6: Tiến qua 1 vạch ngang tiếp theo (thay cho auto_forward(1000))
+    auto_forward_by_lines(1, LINE_SEARCH_SPEED, 4000);
+    my_delay(1000);
+
+    Serial.println("Line Strategy Complete!");
+}
+
+
 void process_combo(int value){
     if(value == 0)  reset_direction(Serial2);
     if(value == 16) forward_command("OA0");
@@ -368,6 +594,12 @@ void process_combo(int value){
     if(value == 22) rote_CW();
 
     if(value == 30) simple_strategy();
+
+    // Các kịch bản mở rộng với cảm biến Line (Bảo toàn 100% mã cũ)
+    if(value == 31) auto_forward_until_line(4000);       // Tiến tìm vạch ngang đầu tiên và dừng
+    if(value == 32) auto_align_to_line();                // Tự động căn vuông góc với vạch line
+    if(value == 33) auto_forward_by_lines(2);            // Chạy qua đúng 2 vạch ngang rồi dừng
+    if(value == 34) line_assisted_strategy();           // Toàn bộ chiến thuật sa bàn đếm vạch chuẩn xác
 }
 
 #define ROTATE_PID
@@ -441,6 +673,59 @@ void processSerialCommand(String command) {
         update_k_PID(command.substring(1));
         return;
     }
+
+    if(prefix == 'L'){  // Line Sensor Actions & Combos
+        String sub = command.substring(1);
+        sub.trim();
+
+        // 1. Lệnh 'L' hoặc 'L0': In trạng thái cảm biến phục vụ căn chỉnh tại chỗ
+        if(sub.length() == 0 || sub == "0"){
+            uint8_t raw = line_sensor.readRawBits();
+            uint8_t filtered = line_sensor.readFilteredBits();
+            float err = line_sensor.getSteeringError();
+            String msg = "Line Status -> Raw: [L2=" + String((raw>>3)&1) + " L1=" + String((raw>>2)&1) + 
+                         " R1=" + String((raw>>1)&1) + " R2=" + String(raw&1) + 
+                         "] | Filtered: 0b" + String(filtered, BIN) + 
+                         " | Steering Err: " + String(err) + 
+                         " | CrossLine: " + String(line_sensor.isCrossLine() ? "YES" : "NO");
+            Serial.println(msg);
+            SerialBT.println(msg);
+            return;
+        }
+
+        int val = sub.toInt();
+
+        // 2. L1 hoặc L31: Tiến tìm vạch ngang đầu tiên và dừng
+        if(val == 1 || val == 31){
+            auto_forward_until_line(4000);
+            return;
+        }
+
+        // 3. L2 hoặc L32: Tự động căn vuông góc 90 độ với vạch ngang
+        if(val == 2 || val == 32){
+            auto_align_to_line();
+            return;
+        }
+
+        // 4. L3 hoặc L33: Chạy qua đúng 2 vạch ngang rồi dừng
+        if(val == 3 || val == 33){
+            auto_forward_by_lines(2);
+            return;
+        }
+
+        // 5. L4 hoặc L34: Chạy toàn bộ chiến thuật sa bàn 800x800cm
+        if(val == 4 || val == 34){
+            line_assisted_strategy();
+            return;
+        }
+
+        // 6. L{N}: Chạy qua đúng N vạch ngang bất kỳ (ví dụ L5 -> chạy qua 5 vạch)
+        if(val > 0){
+            auto_forward_by_lines(val);
+            return;
+        }
+    }
+
 
 }
 

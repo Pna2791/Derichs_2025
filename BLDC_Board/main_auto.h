@@ -695,32 +695,14 @@ void processSerialCommand(String command) {
 
         int val = sub.toInt();
 
-        // 2. L1 hoặc L31: Tiến tìm vạch ngang đầu tiên và dừng
-        if(val == 1 || val == 31){
-            auto_forward_until_line(4000);
-            return;
-        }
-
-        // 3. L2 hoặc L32: Tự động căn vuông góc 90 độ với vạch ngang
-        if(val == 2 || val == 32){
-            auto_align_to_line();
-            return;
-        }
-
-        // 4. L3 hoặc L33: Chạy qua đúng 2 vạch ngang rồi dừng
-        if(val == 3 || val == 33){
-            auto_forward_by_lines(2);
-            return;
-        }
-
-        // 5. L4 hoặc L34: Chạy toàn bộ chiến thuật sa bàn 800x800cm
-        if(val == 4 || val == 34){
+        // 2. L30: Chạy toàn bộ chiến thuật sa bàn 800x800cm
+        if(val == 30){
             line_assisted_strategy();
             return;
         }
 
-        // 6. L{N}: Chạy qua đúng N vạch ngang bất kỳ (ví dụ L5 -> chạy qua 5 vạch)
-        if(val > 0){
+        // 3. L + số bất kỳ < 30: Số lượng vạch ngang robot sẽ tự đếm rồi tự động dừng & tự căn vuông góc 90 độ
+        if(val > 0 && val < 30){
             auto_forward_by_lines(val);
             return;
         }

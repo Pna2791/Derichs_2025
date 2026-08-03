@@ -11,8 +11,8 @@
 class LineSensor {
 public:
     enum SensorPolarity {
-        ACTIVE_HIGH = 1, // HIGH trên line đen (nền sáng LOW)
-        ACTIVE_LOW = 0   // LOW trên line đen (nền sáng HIGH)
+        ACTIVE_HIGH = 1, // Pin ra HIGH khi chạm line, LOW trên nền sáng
+        ACTIVE_LOW = 0   // Pin ra LOW khi chạm line, HIGH trên nền sáng (dùng cho KY-038 đảo)
     };
 
     /**

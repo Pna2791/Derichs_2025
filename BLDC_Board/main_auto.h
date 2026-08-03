@@ -229,7 +229,10 @@ void auto_forward(int distance){
     float delta_slowdown = step_per_mm*slowdown_distance;
     int left_pos_slowdown = left_pos - delta_slowdown;
     int right_pos_slowdown = right_pos - delta_slowdown;
+    static uint32_t last_dir_update = 0;
+
     while(left_encoder.getCount() < left_pos || right_encoder.getCount() < right_pos){
+        // 1. Chuyển sang tốc độ chậm ở 250mm cuối
         if (
             is_normal_speed 
             && (left_encoder.getCount() > left_pos_slowdown)
@@ -239,6 +242,13 @@ void auto_forward(int distance){
             is_normal_speed = false;
         }
 
+        // 2. KHI ĐANG CHẠY CHẬM ĐOẠN CUỐI: Chỉ cần phát hiện line là DỪNG NGAY
+        if (!is_normal_speed && dir > 0) {
+            if (line_sensor.isCrossLine()) {
+                Serial.println("Line detected in slowdown zone -> STOP!");
+                break;
+            }
+        }
         
         my_loop();
         if(emergency_stop){
@@ -247,7 +257,23 @@ void auto_forward(int distance){
             motor_right.stop();
             return;
         }
+
+        // 3. Giữ hướng: L1/R1 chỉnh target_dir khi bị lệch (debounce 2s)
+        if (millis() - last_dir_update > LINE_DIR_UPDATE_MS) {
+            bool l1 = line_sensor.isL1();
+            bool r1 = line_sensor.isR1();
+            if (l1 && !r1) { 
+                target_dir += DELTA_ANGLE; 
+                last_dir_update = millis(); 
+                Serial.println("Adjust target_dir LEFT: " + String(target_dir));
+            } else if (!l1 && r1) { 
+                target_dir -= DELTA_ANGLE; 
+                last_dir_update = millis(); 
+                Serial.println("Adjust target_dir RIGHT: " + String(target_dir));
+            }
+        }
         
+        // 4. IMU Hi229 giữ hướng theo target_dir
         int direction = get_direction(Serial2);
         if(direction != 0xFFF){
             Serial.println("Ang: " + String(direction));
@@ -366,87 +392,81 @@ void simple_strategy(){
 // ==================== LINE SENSOR NAVIGATION FUNCTIONS ====================
 
 /**
- * @brief Chạy tiến kết hợp:
- *        - 2 mắt giữa L1/R1 kẹp vạch để tự động căn tâm (Line Centering).
- *        - IMU Hi229 giữ hướng thẳng khi line nằm lọt giữa L1 và R1.
- *        - 2 mắt ngoài L2/R2 đếm số vạch ngang / nút giao trên sa bàn để dừng chuẩn 100%.
- * @param target_lines Số vạch ngang cần đi qua để dừng xe
- * @param speed Tốc độ di chuyển
- * @param timeout_ms Thời gian tối đa chống kẹt/tuột line
- * @return true nếu đếm đủ số vạch và dừng thành công, false nếu timeout
+ * @brief Chạy tiến đếm vạch ngang sa bàn, dừng chính xác ở vạch thứ N.
+ *        Cơ chế: Chạy nhanh → Giảm tốc 40% ở vạch cuối cùng → Dừng khi chạm.
+ *        Giữ thẳng: IMU Hi229 forward_pid + L1/R1 chỉnh target_dir mỗi 2s.
+ * @param target_lines Số vạch ngang cần đi qua rồi dừng
+ * @param speed Tốc độ chạy nhanh
+ * @param timeout_ms Timeout chống deadlock
+ * @return true nếu dừng thành công, false nếu timeout/emergency
  */
-bool auto_forward_by_lines(int target_lines, int speed = LINE_SEARCH_SPEED, uint32_t timeout_ms = LINE_TIMEOUT_MS) {
-    Serial.println("Auto forward by lines: Target " + String(target_lines) + " lines");
+bool auto_forward_by_lines(int target_lines, int speed = auto_forward_speed, uint32_t timeout_ms = LINE_TIMEOUT_MS) {
+    Serial.println("Forward by lines: " + String(target_lines));
     forward_pid.reset();
-    line_pid.reset();
     line_sensor.resetLineCounterState();
 
     int lines_passed = 0;
-    int auto_speed = speed;
+    // Nếu chỉ cần 1 vạch → chạy chậm từ đầu để dò chính xác
+    int auto_speed = (target_lines <= 1) ? (speed * 4 / 10) : speed;
+    uint32_t last_dir_update = 0;
+    long time_out = millis() + timeout_ms;
+
     motor_left.setSpeed(auto_speed);
     motor_right.setSpeed(auto_speed);
-
-    long time_out = millis() + timeout_ms;
 
     while (millis() < time_out) {
         my_loop();
         if (emergency_stop) {
-            Serial.println("Emergency stopped in line count");
-            motor_left.stop();
-            motor_right.stop();
+            motor_left.stop(); motor_right.stop();
             return false;
         }
 
-        // 1. Kiểm tra phát hiện vạch ngang mới qua 2 mắt ngoài L2 / R2
+        // 1. Đếm vạch ngang qua 2 mắt ngoài L2/R2
         if (line_sensor.checkNewCrossLine()) {
             lines_passed++;
-            Serial.println(">>> PASSED LINE: " + String(lines_passed) + " / " + String(target_lines) + 
-                           " (Pos L=" + String(left_encoder.getCount()) + " R=" + String(right_encoder.getCount()) + ")");
-            #ifdef DEBUG
-                SerialBT.println("Line: " + String(lines_passed) + "/" + String(target_lines));
-            #endif
+            Serial.println("LINE " + String(lines_passed) + "/" + String(target_lines)
+                + " L=" + String(left_encoder.getCount()) + " R=" + String(right_encoder.getCount()));
 
-            // Đã đạt đủ số vạch ngang mục tiêu -> Phanh khẩn cấp & căn góc
             if (lines_passed >= target_lines) {
-                motor_left.stop();
-                motor_right.stop();
-                Serial.println(">>> REACHED TARGET NODE! Stopped perfectly.");
+                motor_left.stop(); motor_right.stop();
+                Serial.println(">>> REACHED TARGET!");
                 delay(50);
-                auto_align_to_line(LINE_SLOW_SPEED, 1500); // Tự động căn vuông góc 90 độ với vạch
+                auto_align_to_line(LINE_SLOW_SPEED, 1500);
                 return true;
             }
-        }
-
-        // 2. Điều hướng: Kết hợp bám tâm (L1, R1 kẹp vạch) và IMU Hi229
-        float steer_err = line_sensor.getSteeringError(); // L1 chạm -> -1.0 (lái trái), R1 chạm -> +1.0 (lái phải), giữa -> 0.0
-        float delta_value = 0.0f;
-
-        if (steer_err != 0.0f) {
-            // Khi bị lệch khỏi khe giữa -> Bẻ lái sửa tâm theo cảm biến
-            delta_value = line_pid.compute(0, steer_err * 100.0f) / 255.0f;
-        } else {
-            // Khi đang ở ngay chính giữa khe -> Dùng IMU Hi229 giữ hướng thẳng hoàn hảo
-            int direction = get_direction(Serial2);
-            if (direction != 0xFFF) {
-                direction = standard_dir(target_dir, direction);
-                delta_value = forward_pid.compute(target_dir, direction) / 255.0f;
+            // Còn 1 vạch cuối → giảm tốc 40% để dò chính xác (như auto_forward)
+            if (lines_passed >= target_lines - 1) {
+                auto_speed = speed * 4 / 10;
             }
         }
 
-        motor_left.setSpeed(auto_speed * (1.0f - delta_value));
-        motor_right.setSpeed(auto_speed * (1.0f + delta_value));
+        // 2. L1/R1 chỉnh target_dir mỗi 2s (2 mắt giữa cách nhau 10cm)
+        if (millis() - last_dir_update > LINE_DIR_UPDATE_MS) {
+            bool l1 = line_sensor.isL1();
+            bool r1 = line_sensor.isR1();
+            if (l1 && !r1) { target_dir += DELTA_ANGLE; last_dir_update = millis(); }
+            else if (!l1 && r1) { target_dir -= DELTA_ANGLE; last_dir_update = millis(); }
+        }
+
+        // 3. IMU forward_pid giữ hướng thẳng theo target_dir
+        int direction = get_direction(Serial2);
+        if (direction != 0xFFF) {
+            direction = standard_dir(target_dir, direction);
+            float dv = forward_pid.compute(target_dir, direction) / 255.0f;
+            motor_left.setSpeed(auto_speed * (1.0f - dv));
+            motor_right.setSpeed(auto_speed * (1.0f + dv));
+        }
     }
 
-    motor_left.stop();
-    motor_right.stop();
-    Serial.println("Line count timeout! Passed " + String(lines_passed) + "/" + String(target_lines));
+    motor_left.stop(); motor_right.stop();
+    Serial.println("Line timeout! " + String(lines_passed) + "/" + String(target_lines));
     return false;
 }
 
 /**
- * @brief Tiến thẳng kết hợp giữ góc IMU và dừng ngay khi phát hiện vạch line đầu tiên
+ * @brief Tiến thẳng và dừng ngay khi phát hiện vạch line đầu tiên (wrapper)
  */
-bool auto_forward_until_line(int max_distance, int speed = LINE_SEARCH_SPEED, uint32_t timeout_ms = LINE_TIMEOUT_MS) {
+bool auto_forward_until_line(int max_distance, int speed = auto_forward_speed, uint32_t timeout_ms = LINE_TIMEOUT_MS) {
     return auto_forward_by_lines(1, speed, timeout_ms);
 }
 
@@ -701,9 +721,9 @@ void processSerialCommand(String command) {
             return;
         }
 
-        // 3. L + số bất kỳ < 30: Số lượng vạch ngang robot sẽ tự đếm rồi tự động dừng & tự căn vuông góc 90 độ
+        // 3. L + số bất kỳ < 30: Đếm N vạch ngang → tự dừng & tự căn vuông góc 90°
         if(val > 0 && val < 30){
-            auto_forward_by_lines(val);
+            auto_forward_by_lines(val, auto_forward_speed, LINE_TIMEOUT_MS + 3000 * val);
             return;
         }
     }

@@ -123,6 +123,10 @@ void my_loop(){
     signal_receriver();
 }
 
+void loop() {
+    my_loop();
+}
+
 void my_delay(int time){
     long time_out = millis() + time;
     while(millis() < time_out){

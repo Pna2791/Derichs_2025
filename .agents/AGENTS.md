@@ -40,3 +40,11 @@
 ## 6. Tối ưu Thời gian Thực & Hạn chế `delay()` (Real-time & State Machine)
 - **Hạn chế tối đa `delay()`**: Tuyệt đối không dùng `delay()` làm đóng băng CPU và nghẽn luồng xử lý gói tin.
 - **Ưu tiên State Machine không khóa**: Sử dụng `millis()` và mô hình State Machine (FSM) cho mọi kịch bản tự động, đảm bảo vòng lặp `loop()` đạt chu kỳ $\ge 100\text{Hz}$ để phản xạ tức thì với lệnh dừng hoặc thay đổi trạng thái sân đấu.
+
+## 7. Quy chuẩn Tối ưu Code, Tinh gọn & Dễ đọc hiểu (Code Simplicity & Field Maintainability)
+- **Tiêu chuẩn tinh gọn & Giới hạn dòng code**: Mỗi hàm hoặc tính năng mới thêm vào phải được tối ưu số lượng dòng code, **ưu tiên từ 50 dòng trở xuống** (có thể dài hơn nếu logic yêu cầu nhưng bắt buộc phải module hóa rõ ràng, chia nhỏ hàm phụ nếu cần).
+- **Tính thực chiến & Khả năng sửa nóng tại sân (Field-Repairable)**:
+  - Code phải cực kỳ trong sáng, tường minh, dễ đọc hiểu để người dùng có thể nắm bắt nhanh và trực tiếp chỉnh sửa/tinh chỉnh thông số trong tình huống khẩn cấp trên sân thi đấu.
+  - Đặt tên biến, hàm và hằng số trực quan, gắn liền với chuyển động thực tế của robot (ví dụ: `auto_speed`, `target_pos`, `time_out`, `target_dir`).
+  - Chú thích (comment) súc tích, giải thích rõ mục đích tại các mốc trọng yếu (tính khoảng cách, vùng giảm tốc, khóa an toàn).
+- **Bảo toàn tính đúng đắn & An toàn**: Tối ưu ngắn gọn nhưng tuyệt đối không cắt bớt các điều kiện an toàn cốt lõi (kiểm tra `emergency_stop`, vòng lặp `my_loop()`, và khóa `timeout`).

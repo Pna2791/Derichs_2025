@@ -42,6 +42,8 @@ bool check_line_sensor(int sensor_index){
 
 bool servo_enable = false;
 bool emergency_stop = false;
+bool calibrate_center_on = true;
+int delta_angle_target = 0;
 
 int target_dir = 0;
 int wheel_speed = 0;
@@ -198,6 +200,27 @@ void move_wheel(int dir){
 
 #define DEBUG
 
+
+void calibrate_center(bool reset = false){
+    static long next_update = millis();
+    if(reset){
+        delta_angle_target = 0;
+        next_update = millis() + 1000;
+        return;
+    }
+    if(millis() > next_update){
+        if(calibrate_center_on){
+            if(check_line_sensor(0))
+                delta_angle_target += 50;
+            if(check_line_sensor(1))
+                delta_angle_target -= 50;
+        }
+        next_update += 1000;
+    }
+
+}
+
+
 #define WHEEL_DIAMETER 100
 #define GEAR_RATIO 14   
 #define STEPS_PER_REVOLUTION 6
@@ -210,6 +233,8 @@ const float step_per_mm = 1.0f * GEAR_RATIO * STEPS_PER_REVOLUTION / WHEEL_DIAME
 #define auto_forward_speed  120
 // distance > 0: forward, distance < 0: backward (encoders count up only)
 void auto_forward(int distance){
+    calibrate_center(true);
+    
     int dir = (distance >= 0) ? 1 : -1;
     distance = abs(distance);
 
@@ -252,15 +277,16 @@ void auto_forward(int distance){
             motor_right.stop();
             return;
         }
-        
+        calibrate_center(false);
+
         int direction = get_direction(Serial2);
         if(direction != 0xFFF){
             Serial.println("Ang: " + String(direction));
-            direction = standard_dir(target_dir, direction);
+            direction = standard_dir(target_dir+delta_angle_target, direction);
 
-            float delta_value = forward_pid.compute(target_dir, direction)/255*dir;
+            float delta_value = forward_pid.compute(target_dir+delta_angle_target, direction)/255*dir;
             #ifdef DEBUG
-                String message = String(delta_value*10) + '\t' + String(target_dir-direction);
+                String message = String(delta_value*10) + '\t' + String(target_dir+delta_angle_target-direction);
                 SerialBT.println(message);
             #endif
 
@@ -349,6 +375,7 @@ void reset_direction(HardwareSerial &serialPort = Serial){
     delay(1000);
     serialPort.println("AT+RST");
     target_dir = 0;
+    delta_angle_target = 0;
 }
 
 void simple_strategy(){
@@ -356,9 +383,9 @@ void simple_strategy(){
     rote_CW();
     my_delay(5000);
 
-    auto_forward(1200);
+    auto_forward(1750);
     rote_CCW();
-    auto_forward(-1260);
+    auto_forward(-1700);
     my_delay(1000);
     auto_forward(1260*2);
     my_delay(1000);

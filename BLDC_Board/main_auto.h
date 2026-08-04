@@ -21,14 +21,14 @@ BluetoothSerial SerialBT;
 #include <PID_Control.h>
 #include <BLDC_servo.h>
 #include "hi229.h"
-#include "LineSensor.h"
+//#include "LineSensor.h"
 
 
 Encoder     left_encoder(LEFT_ENCODER_PIN);
 Encoder     right_encoder(RIGHT_ENCODER_PIN);
 
-// Khởi tạo dàn 4 mắt cảm biến KY-038 tầng 1
-LineSensor  line_sensor(LINE_PIN_L2, LINE_PIN_L1, LINE_PIN_R1, LINE_PIN_R2, LINE_SENSOR_POLARITY);
+// Khởi tạo dàn 4 mắt cảm biến KY-038 tầng 1 (TẠM THỜI VÔ HIỆU HÓA)
+// LineSensor  line_sensor(LINE_PIN_L2, LINE_PIN_L1, LINE_PIN_R1, LINE_PIN_R2, LINE_SENSOR_POLARITY);
 
 //           pwm, dir, brake, speed, dir, brake
 BLDC_Motor motor_left( 16,  5, 17, 1, 0, 1);
@@ -36,7 +36,7 @@ BLDC_Motor motor_right(22, 23, 19, 1, 1, 1);
 
 PIDController   forward_pid(10, 2, 1, -192, 192); // 315rpm speed 100-150
 PIDController   rotate_pid(2, 0.0, 0.15, -255, 255); // 315rpm speed 100-150
-PIDController   line_pid(120, 0.0, 10, -180, 180);  // PID bám line
+// PIDController   line_pid(120, 0.0, 10, -180, 180);  // PID bám line
 
 
 bool servo_enable = false;
@@ -54,13 +54,13 @@ void setup() {
 
     left_encoder.begin();
     right_encoder.begin();
-    line_sensor.begin();
+    // line_sensor.begin(); // (TẠM THỜI VÔ HIỆU HÓA)
 
     motor_left.stop();
     motor_right.stop();
 
     delay(1000);
-    Serial.println("Started with Line Sensor Support");
+    Serial.println("Started (Line Sensor Disabled)");
 }
 
 
@@ -389,7 +389,7 @@ void simple_strategy(){
 }
 
 
-// ==================== LINE SENSOR NAVIGATION FUNCTIONS ====================
+/* ==================== LINE SENSOR NAVIGATION FUNCTIONS (DISABLED) ====================
 
 // Forward declarations
 bool auto_align_to_line(int align_speed = LINE_SLOW_SPEED, uint32_t timeout_ms = 3000);
@@ -605,6 +605,7 @@ void line_assisted_strategy() {
 
     Serial.println("Line Strategy Complete!");
 }
+==================== END LINE SENSOR FUNCTIONS ==================== */
 
 
 void process_combo(int value){
@@ -620,11 +621,11 @@ void process_combo(int value){
 
     if(value == 30) simple_strategy();
 
-    // Các kịch bản mở rộng với cảm biến Line (Bảo toàn 100% mã cũ)
-    if(value == 31) auto_forward_until_line(4000);       // Tiến tìm vạch ngang đầu tiên và dừng
-    if(value == 32) auto_align_to_line();                // Tự động căn vuông góc với vạch line
-    if(value == 33) auto_forward_by_lines(2);            // Chạy qua đúng 2 vạch ngang rồi dừng
-    if(value == 34) line_assisted_strategy();           // Toàn bộ chiến thuật sa bàn đếm vạch chuẩn xác
+    // Các kịch bản mở rộng với cảm biến Line (TẠM THỜI VÔ HIỆU HÓA)
+    // if(value == 31) auto_forward_until_line(4000);       // Tiến tìm vạch ngang đầu tiên và dừng
+    // if(value == 32) auto_align_to_line();                // Tự động căn vuông góc với vạch line
+    // if(value == 33) auto_forward_by_lines(2);            // Chạy qua đúng 2 vạch ngang rồi dừng
+    // if(value == 34) line_assisted_strategy();           // Toàn bộ chiến thuật sa bàn đếm vạch chuẩn xác
 }
 
 #define ROTATE_PID
@@ -699,6 +700,7 @@ void processSerialCommand(String command) {
         return;
     }
 
+    /* TẠM THỜI VÔ HIỆU HÓA LỆNH L
     if(prefix == 'L'){  // Line Sensor Actions & Combos
         String sub = command.substring(1);
         sub.trim();
@@ -732,8 +734,7 @@ void processSerialCommand(String command) {
             return;
         }
     }
-
-
+    */
 }
 
 #endif

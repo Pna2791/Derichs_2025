@@ -49,6 +49,7 @@ void setup() {
 
     left_encoder.begin();
     right_encoder.begin();
+    init_line_sensor();
 
     motor_left.stop();
     motor_right.stop();
@@ -116,6 +117,21 @@ void signal_receriver(){
             command_1 += c;
         }
     }
+}
+
+// ==================== 2 LINE SENSORS (L2 & R2) ====================
+inline void init_line_sensor() {
+    pinMode(LINE_PIN_L2, INPUT);
+    pinMode(LINE_PIN_R2, INPUT);
+}
+
+// Kiểm tra vạch ngang: 1 trong 2 mắt ngoài chạm vạch đen (LOW / 0)
+inline bool check_cross_line() {
+    if (digitalRead(LINE_PIN_L2) == LOW || digitalRead(LINE_PIN_R2) == LOW) {
+        delayMicroseconds(100); // Lọc nhiễu quang học
+        return (digitalRead(LINE_PIN_L2) == LOW || digitalRead(LINE_PIN_R2) == LOW);
+    }
+    return false;
 }
 
 void my_loop(){
@@ -231,6 +247,12 @@ void auto_forward(int distance){
         ){
             auto_speed = dir * auto_forward_speed * 0.4;
             is_normal_speed = false;
+        }
+
+        // Bắt vạch ngang trong 250mm cuối khi chạy tiến -> Dừng khựng chuẩn xác
+        if (!is_normal_speed && dir > 0 && check_cross_line()) {
+            Serial.println("Line detected in slowdown zone -> STOP!");
+            break;
         }
 
         
@@ -440,6 +462,25 @@ void processSerialCommand(String command) {
     
     if(prefix == 'k'){  // update_PID
         update_k_PID(command.substring(1));
+        return;
+    }
+
+    if(prefix == 'L'){  // Test cảm biến Line (L: đọc 1 lần, L1: đọc liên tục 5s)
+        int mode = command.substring(1).toInt();
+        if (mode == 1) {
+            long end_t = millis() + 5000;
+            while(millis() < end_t && !emergency_stop) {
+                my_loop();
+                String msg = "L2: " + String(digitalRead(LINE_PIN_L2)) + " | R2: " + String(digitalRead(LINE_PIN_R2)) + " | Vach: " + (check_cross_line() ? "CO" : "KHONG");
+                Serial.println(msg);
+                SerialBT.println(msg);
+                delay(100);
+            }
+            return;
+        }
+        String msg = "[LINE] L2: " + String(digitalRead(LINE_PIN_L2)) + " | R2: " + String(digitalRead(LINE_PIN_R2)) + " | Vach: " + (check_cross_line() ? "CO" : "KHONG");
+        Serial.println(msg);
+        SerialBT.println(msg);
         return;
     }
 

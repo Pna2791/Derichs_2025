@@ -391,6 +391,61 @@ void simple_strategy(){
 
 // ==================== LINE SENSOR NAVIGATION FUNCTIONS ====================
 
+// Forward declarations
+bool auto_align_to_line(int align_speed = LINE_SLOW_SPEED, uint32_t timeout_ms = 3000);
+bool auto_forward_by_lines(int target_lines, int speed = auto_forward_speed, uint32_t timeout_ms = LINE_TIMEOUT_MS);
+bool auto_forward_until_line(int max_distance, int speed = auto_forward_speed, uint32_t timeout_ms = LINE_TIMEOUT_MS);
+
+/**
+ * @brief Tự động căn vuông góc 90 độ với vạch ngang (Squaring to line)
+ *        Bánh bên nào chưa chạm vạch ngoài thì nhích tiếp, bên nào chạm rồi thì dừng lại.
+ */
+bool auto_align_to_line(int align_speed, uint32_t timeout_ms) {
+    Serial.println("Aligning to line...");
+    long time_out = millis() + timeout_ms;
+
+    while (millis() < time_out) {
+        my_loop();
+        if (emergency_stop) {
+            motor_left.stop();
+            motor_right.stop();
+            return false;
+        }
+
+        bool left_on = line_sensor.isLeftTriggered();   // Mắt ngoài L2
+        bool right_on = line_sensor.isRightTriggered(); // Mắt ngoài R2
+
+        // Cả 2 bên đều đã chạm vạch line -> Đã vuông góc 90 độ hoàn hảo
+        if (left_on && right_on) {
+            motor_left.stop();
+            motor_right.stop();
+            Serial.println("Line alignment complete (90 deg calibrated)!");
+            return true;
+        }
+
+        // Bên trái đã chạm line -> dừng bánh trái, nhích bánh phải
+        if (left_on && !right_on) {
+            motor_left.stop();
+            motor_right.setSpeed(align_speed);
+        }
+        // Bên phải đã chạm line -> dừng bánh phải, nhích bánh trái
+        else if (!left_on && right_on) {
+            motor_right.stop();
+            motor_left.setSpeed(align_speed);
+        }
+        // Cả 2 chưa chạm -> cùng nhích chậm về phía trước
+        else {
+            motor_left.setSpeed(align_speed);
+            motor_right.setSpeed(align_speed);
+        }
+    }
+
+    motor_left.stop();
+    motor_right.stop();
+    Serial.println("Align timeout");
+    return false;
+}
+
 /**
  * @brief Chạy tiến đếm vạch ngang sa bàn, dừng chính xác ở vạch thứ N.
  *        Cơ chế: Chạy nhanh → Giảm tốc 40% ở vạch cuối cùng → Dừng khi chạm.
@@ -400,7 +455,7 @@ void simple_strategy(){
  * @param timeout_ms Timeout chống deadlock
  * @return true nếu dừng thành công, false nếu timeout/emergency
  */
-bool auto_forward_by_lines(int target_lines, int speed = auto_forward_speed, uint32_t timeout_ms = LINE_TIMEOUT_MS) {
+bool auto_forward_by_lines(int target_lines, int speed, uint32_t timeout_ms) {
     Serial.println("Forward by lines: " + String(target_lines));
     forward_pid.reset();
     line_sensor.resetLineCounterState();
@@ -466,58 +521,8 @@ bool auto_forward_by_lines(int target_lines, int speed = auto_forward_speed, uin
 /**
  * @brief Tiến thẳng và dừng ngay khi phát hiện vạch line đầu tiên (wrapper)
  */
-bool auto_forward_until_line(int max_distance, int speed = auto_forward_speed, uint32_t timeout_ms = LINE_TIMEOUT_MS) {
+bool auto_forward_until_line(int max_distance, int speed, uint32_t timeout_ms) {
     return auto_forward_by_lines(1, speed, timeout_ms);
-}
-
-/**
- * @brief Tự động căn vuông góc 90 độ với vạch ngang (Squaring to line)
- *        Bánh bên nào chưa chạm vạch ngoài thì nhích tiếp, bên nào chạm rồi thì dừng lại.
- */
-bool auto_align_to_line(int align_speed = LINE_SLOW_SPEED, uint32_t timeout_ms = 3000) {
-    Serial.println("Aligning to line...");
-    long time_out = millis() + timeout_ms;
-
-    while (millis() < time_out) {
-        my_loop();
-        if (emergency_stop) {
-            motor_left.stop();
-            motor_right.stop();
-            return false;
-        }
-
-        bool left_on = line_sensor.isLeftTriggered();   // Mắt ngoài L2
-        bool right_on = line_sensor.isRightTriggered(); // Mắt ngoài R2
-
-        // Cả 2 bên đều đã chạm vạch line -> Đã vuông góc 90 độ hoàn hảo
-        if (left_on && right_on) {
-            motor_left.stop();
-            motor_right.stop();
-            Serial.println("Line alignment complete (90 deg calibrated)!");
-            return true;
-        }
-
-        // Bên trái đã chạm line -> dừng bánh trái, nhích bánh phải
-        if (left_on && !right_on) {
-            motor_left.stop();
-            motor_right.setSpeed(align_speed);
-        }
-        // Bên phải đã chạm line -> dừng bánh phải, nhích bánh trái
-        else if (!left_on && right_on) {
-            motor_right.stop();
-            motor_left.setSpeed(align_speed);
-        }
-        // Cả 2 chưa chạm -> cùng nhích chậm về phía trước
-        else {
-            motor_left.setSpeed(align_speed);
-            motor_right.setSpeed(align_speed);
-        }
-    }
-
-    motor_left.stop();
-    motor_right.stop();
-    Serial.println("Align timeout");
-    return false;
 }
 
 /**

@@ -373,7 +373,7 @@ void reset_direction(HardwareSerial &serialPort = Serial){
 }
 
 void simple_strategy(){
-    auto_forward(3600);
+    auto_forward(3400);
     rote_CW();
     my_delay(5000);
 

@@ -200,22 +200,25 @@ void move_wheel(int dir){
 
 #define DEBUG
 
-
+#define DELTA_ANGLE_TUNED 50
 void calibrate_center(bool reset = false){
     static long next_update = millis();
     if(reset){
         delta_angle_target = 0;
-        next_update = millis() + 1000;
+        next_update = millis() + 500;
         return;
     }
     if(millis() > next_update){
         if(calibrate_center_on){
-            if(check_line_sensor(0))
-                delta_angle_target += 50;
-            if(check_line_sensor(1))
-                delta_angle_target -= 50;
+            if(check_line_sensor(0)){
+                delta_angle_target += DELTA_ANGLE_TUNED;
+                next_update = millis() + 500;
+            }
+            if(check_line_sensor(1)){
+                delta_angle_target -= DELTA_ANGLE_TUNED;
+                next_update = millis() + 500;
+            }
         }
-        next_update += 1000;
     }
 
 }
@@ -379,14 +382,16 @@ void reset_direction(HardwareSerial &serialPort = Serial){
 }
 
 void simple_strategy(){
+    calibrate_center_on = false;
     auto_forward(3600);
     rote_CW();
-    my_delay(5000);
-
-    auto_forward(1750);
+    my_delay(1000);
+    
+    auto_forward(1850);
     rote_CCW();
     auto_forward(-1700);
     my_delay(1000);
+    calibrate_center_on = true;
     auto_forward(1260*2);
     my_delay(1000);
     auto_forward(1000);

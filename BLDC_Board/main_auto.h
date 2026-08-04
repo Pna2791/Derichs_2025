@@ -42,6 +42,21 @@ int wheel_speed = 0;
 
 void processSerialCommand(String command);
 
+// ==================== 2 LINE SENSORS (L2 & R2) ====================
+inline void init_line_sensor() {
+    pinMode(LINE_PIN_L2, INPUT);
+    pinMode(LINE_PIN_R2, INPUT);
+}
+
+// Kiểm tra vạch ngang: 1 trong 2 mắt ngoài chạm vạch đen (LOW / 0)
+inline bool check_cross_line() {
+    if (digitalRead(LINE_PIN_L2) == LOW || digitalRead(LINE_PIN_R2) == LOW) {
+        delayMicroseconds(100); // Lọc nhiễu quang học
+        return (digitalRead(LINE_PIN_L2) == LOW || digitalRead(LINE_PIN_R2) == LOW);
+    }
+    return false;
+}
+
 void setup() {
     Serial.begin(115200);
     SerialBT.begin(ROBOT_NAME); // Set the Bluetooth device name
@@ -117,21 +132,6 @@ void signal_receriver(){
             command_1 += c;
         }
     }
-}
-
-// ==================== 2 LINE SENSORS (L2 & R2) ====================
-inline void init_line_sensor() {
-    pinMode(LINE_PIN_L2, INPUT);
-    pinMode(LINE_PIN_R2, INPUT);
-}
-
-// Kiểm tra vạch ngang: 1 trong 2 mắt ngoài chạm vạch đen (LOW / 0)
-inline bool check_cross_line() {
-    if (digitalRead(LINE_PIN_L2) == LOW || digitalRead(LINE_PIN_R2) == LOW) {
-        delayMicroseconds(100); // Lọc nhiễu quang học
-        return (digitalRead(LINE_PIN_L2) == LOW || digitalRead(LINE_PIN_R2) == LOW);
-    }
-    return false;
 }
 
 void my_loop(){

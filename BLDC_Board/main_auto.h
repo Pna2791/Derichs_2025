@@ -34,6 +34,12 @@ PIDController   forward_pid(10, 2, 1, -192, 192); // 315rpm speed 100-150
 PIDController   rotate_pid(2, 0.0, 0.15, -255, 255); // 315rpm speed 100-150
 
 
+int line_sensor_pins[4] = {35, 34, 36, 39};
+
+bool check_line_sensor(int sensor_index){
+    return digitalRead(line_sensor_pins[sensor_index]);
+}
+
 bool servo_enable = false;
 bool emergency_stop = false;
 
@@ -64,16 +70,15 @@ void forward_command(String command){
 
 
 void show_encoder(){
-    static long next_update = millis();
+    long left_pos = left_encoder.getCount();
+    long right_pos = right_encoder.getCount();
+    String message = String(left_pos) + " \t" + String(right_pos);
+    Serial.println(message);
+}
 
-    if(millis() > next_update){
-        long left_pos = left_encoder.getCount();
-        long right_pos = right_encoder.getCount();
-        String message = String(left_pos) + " \t" + String(right_pos);
-        Serial.println(message);
-
-        next_update += 1000;
-    }
+void show_line_sensor(){
+    String message = String(check_line_sensor(0)) + " " + String(check_line_sensor(1)) + " " + String(check_line_sensor(2)) + " " + String(check_line_sensor(3));
+    Serial.println(message);
 }
 
 
@@ -82,8 +87,8 @@ void update_servo(){
     if(millis() > next_update){
         if(servo_enable){
             show_encoder();
+            show_line_sensor();
         }
-
         next_update += INTERVAL;
     }
 }
@@ -231,7 +236,11 @@ void auto_forward(int distance){
             auto_speed = dir * auto_forward_speed * 0.4;
             is_normal_speed = false;
         }
-
+        if(!is_normal_speed){
+            if(check_check_line_sensor(3)){
+                break;
+            }
+        }
         
         my_loop();
         if(emergency_stop){

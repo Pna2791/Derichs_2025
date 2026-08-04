@@ -37,7 +37,7 @@ PIDController   rotate_pid(2, 0.0, 0.15, -255, 255); // 315rpm speed 100-150
 int line_sensor_pins[4] = {35, 34, 36, 39};
 
 bool check_line_sensor(int sensor_index){
-    return digitalRead(line_sensor_pins[sensor_index]);
+    return analogRead(line_sensor_pins[sensor_index]) > 1000;
 }
 
 bool servo_enable = false;
@@ -58,6 +58,9 @@ void setup() {
 
     motor_left.stop();
     motor_right.stop();
+    for(int i = 0; i < 4; i++){
+        pinMode(line_sensor_pins[i], INPUT);
+    }
 
     delay(1000);
     Serial.println("Started");
@@ -87,8 +90,8 @@ void update_servo(){
     if(millis() > next_update){
         if(servo_enable){
             show_encoder();
-            show_line_sensor();
         }
+        show_line_sensor();
         next_update += INTERVAL;
     }
 }
@@ -237,7 +240,7 @@ void auto_forward(int distance){
             is_normal_speed = false;
         }
         if(!is_normal_speed){
-            if(check_check_line_sensor(3)){
+            if(check_line_sensor(3)){
                 break;
             }
         }

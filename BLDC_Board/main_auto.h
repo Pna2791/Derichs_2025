@@ -258,7 +258,11 @@ void auto_forward(int distance){
     float delta_slowdown = step_per_mm*slowdown_distance;
     int left_pos_slowdown = left_pos - delta_slowdown;
     int right_pos_slowdown = right_pos - delta_slowdown;
-    while(left_encoder.getCount() < left_pos || right_encoder.getCount() < right_pos){
+
+    // Khóa Timeout chống Deadlock (Rule 5 AGENTS.md)
+    unsigned long forward_timeout = millis() + (unsigned long)(distance * 8 + 3000);
+
+    while((left_encoder.getCount() < left_pos || right_encoder.getCount() < right_pos) && millis() < forward_timeout){
         // Xử lý tạm dừng (P0) và tiếp tục (P1)
         if (auto_forward_paused) {
             motor_left.stop();
@@ -282,7 +286,10 @@ void auto_forward(int distance){
             auto_speed = dir * auto_forward_speed * 0.4;
             is_normal_speed = false;
         }
+
+        // Dừng sớm nếu bắt được Line 4; nếu sensor lỗi sẽ chạy hết quãng đường Encoder
         if(!is_normal_speed && check_line_sensor(3)){
+            Serial.println("Line 4 detected! Stop auto forward.");
             break;
         }
         
@@ -309,6 +316,7 @@ void auto_forward(int distance){
     motor_right.stop();
     Serial.println("Finish forward: " + String(dir * distance));
 }
+
 
 
 #define auto_rotate_speed    150

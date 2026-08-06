@@ -45,6 +45,7 @@ bool emergency_stop = false;
 bool calibrate_center_on = true;
 int delta_angle_target = 0;
 bool ball_drop_done = false;
+bool auto_forward_paused = false;
 
 int target_dir = 0;
 int wheel_speed = 0;
@@ -248,8 +249,6 @@ void auto_forward(int distance){
     float delta_plush = step_per_mm * (distance-brake_distance);
     long left_pos = left_encoder.getCount() + delta_plush;
     long right_pos = right_encoder.getCount() + delta_plush;
-    Serial.println("Left target pos: " + String(left_pos));
-    Serial.println("Right target pos: " + String(right_pos));
 
     int auto_speed = dir * auto_forward_speed;
     motor_left.setSpeed(auto_speed);
@@ -260,6 +259,21 @@ void auto_forward(int distance){
     int left_pos_slowdown = left_pos - delta_slowdown;
     int right_pos_slowdown = right_pos - delta_slowdown;
     while(left_encoder.getCount() < left_pos || right_encoder.getCount() < right_pos){
+        // Xử lý tạm dừng (P0) và tiếp tục (P1)
+        if (auto_forward_paused) {
+            motor_left.stop();
+            motor_right.stop();
+            while (auto_forward_paused) {
+                my_loop();
+                if (emergency_stop) {
+                    auto_forward_paused = false;
+                    return;
+                }
+            }
+            motor_left.setSpeed(auto_speed);
+            motor_right.setSpeed(auto_speed);
+        }
+
         if (
             is_normal_speed 
             && (left_encoder.getCount() > left_pos_slowdown)
@@ -268,10 +282,8 @@ void auto_forward(int distance){
             auto_speed = dir * auto_forward_speed * 0.4;
             is_normal_speed = false;
         }
-        if(!is_normal_speed){
-            if(check_line_sensor(3)){
-                break;
-            }
+        if(!is_normal_speed && check_line_sensor(3)){
+            break;
         }
         
         my_loop();
@@ -279,21 +291,15 @@ void auto_forward(int distance){
             Serial.println("Emergency stopped");
             motor_left.stop();
             motor_right.stop();
+            auto_forward_paused = false;
             return;
         }
         calibrate_center(false);
 
         int direction = get_direction(Serial2);
         if(direction != 0xFFF){
-            Serial.println("Ang: " + String(direction));
             direction = standard_dir(target_dir+delta_angle_target, direction);
-
             float delta_value = forward_pid.compute(target_dir+delta_angle_target, direction)/255*dir;
-            #ifdef DEBUG
-                String message = String(delta_value*10) + '\t' + String(target_dir+delta_angle_target-direction);
-                SerialBT.println(message);
-            #endif
-
             motor_left.setSpeed(auto_speed * (1 - delta_value));
             motor_right.setSpeed(auto_speed * (1 + delta_value));
         }
@@ -302,8 +308,6 @@ void auto_forward(int distance){
     motor_left.stop();
     motor_right.stop();
     Serial.println("Finish forward: " + String(dir * distance));
-    Serial.println("Left current pos: " + String(left_encoder.getCount()));
-    Serial.println("Right current pos: " + String(right_encoder.getCount()));
 }
 
 
@@ -526,6 +530,16 @@ void processSerialCommand(String command) {
     command.trim();  // Remove any leading/trailing whitespace
     if (command == "DONE" || command == "ALL_DONE") {
         ball_drop_done = true;
+        return;
+    }
+    if (command == "P0") {
+        auto_forward_paused = true;
+        Serial.println("PAUSE_ON");
+        return;
+    }
+    if (command == "P1") {
+        auto_forward_paused = false;
+        Serial.println("PAUSE_OFF");
         return;
     }
     char prefix = command.charAt(0);

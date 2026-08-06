@@ -1,114 +1,69 @@
-// controller: Arduino nano
-// Receive command from mainboard and process to turn on/off 9 ports on this board
+// Controller: Arduino Nano (On_Off_Board)
+// Quản lý 9 cổng công suất - Giao tiếp UART 115200
+// Hỗ trợ song song: Bộ lệnh nhanh D1/D0/E và ma trận lệnh chuẩn O{Channel}{State}
 
-// On Off command start with O, format is "Oxc" - O is prefix, x is On/Off (1, 0), c is channel from 0-8
+#define n_channels 9
+const int channel_pins[n_channels] = {3, 4, 5, 6, 7, 8, 9, 10, 11};
 
+// Mapping 3 động cơ DC chính
+#define DC1_PIN 3  // Channel 0 (Pin 3)
+#define DC2_PIN 4  // Channel 1 (Pin 4)
+#define DC3_PIN 5  // Channel 2 (Pin 5)
 
-#define DEBUG
-
-
-#define n_channels  9
-const int channel_pins[n_channels]  = {3, 4, 5, 6, 7, 8, 9, 10, 11};
-
-#define n_feedback  4
-const int feedback_input_pins[n_feedback]   = {A4, A5, A6, A7};
-const int feedback_output_pins[n_feedback]  = {A0, A1, A2, A3};
-const int feedback_thresholds[n_feedback]   = {1024, 1024, 1024, 1024};
-
-
+void process_command(String command);
 
 void setup() {
-    for(int i=0; i<n_channels; i++)
+    Serial.begin(115200);
+    Serial.setTimeout(10);
+
+    for (int i = 0; i < n_channels; i++) {
         pinMode(channel_pins[i], OUTPUT);
-    
-    for(int i=0; i<n_feedback; i++){
-        pinMode(feedback_input_pins[i], INPUT);
-        pinMode(feedback_output_pins[i], OUTPUT);
     }
 
-    Serial.begin(9600);
+    // Động cơ DC 1 & DC 2 luôn chạy khi robot khởi động
+    digitalWrite(DC1_PIN, HIGH);
+    digitalWrite(DC2_PIN, HIGH);
+    digitalWrite(DC3_PIN, LOW);
 }
-
-
-void process_current(){
-    static int count = 0;
-    static int feedback_values[n_feedback]  = {0, 0, 0, 0};
-
-    // Just process with 1 sample / ms
-    static long next_update = millis();
-    if(millis() < next_update)  return;
-    next_update += 1;
-
-    for(int i=0; i<n_feedback; i++){
-        feedback_values[i] += analogRead(feedback_input_pins[i]);
-        feedback_values[i] /= 2;
-    }
-
-
-    count++;
-    // Check status with 100Hz
-    if(count >= 10){
-        for(int i=0; i<n_feedback; i++){
-            bool status = feedback_values[i] > feedback_thresholds[i];
-            digitalWrite(feedback_output_pins[i], status);
-            Serial.print(feedback_values[i]);
-            Serial.print('\t');
-        }
-        Serial.println();
-
-        count = 0;
-    }
-}
-
-
-void signal_receriver(){
-    static String command = "";
-    if(Serial.available()){
-        char ch = Serial.read();
-        if(ch == '\n'){
-            process_command(command);
-            command = "";
-        }else{
-            command += ch;
-        }
-    }
-
-}
-
 
 void loop() {
-    signal_receriver();
-    // process_current();
+    if (Serial.available() > 0) {
+        String command = Serial.readStringUntil('\n');
+        process_command(command);
+    }
 }
 
-
-void process_command(String command){
+void process_command(String command) {
     command.trim();
+    if (command.length() == 0) return;
 
-    // Expecting format: Oxc (e.g., O10) where x=1/0, c=0-8
+    // 1. Bộ lệnh nhanh đồng bộ DC 3 và Dừng khẩn cấp
+    if (command == "D1") {
+        digitalWrite(DC3_PIN, HIGH);
+        return;
+    }
+    if (command == "D0") {
+        digitalWrite(DC3_PIN, LOW);
+        return;
+    }
+    if (command == "E" || command == "OA0") {
+        for (int i = 0; i < n_channels; i++) digitalWrite(channel_pins[i], LOW);
+        return;
+    }
+    if (command == "OA1") {
+        digitalWrite(DC1_PIN, HIGH);
+        digitalWrite(DC2_PIN, HIGH);
+        digitalWrite(DC3_PIN, LOW);
+        return;
+    }
+
+    // 2. Bảo toàn ma trận giao thức chuẩn: O{Channel}{State} (O11, O20, OA0...)
     if (command.length() == 3 && command.charAt(0) == 'O') {
-        char onoff = command.charAt(2);
         char channel = command.charAt(1);
+        char onoff   = command.charAt(2);
         if ((onoff == '0' || onoff == '1') && channel >= '0' && channel <= '8') {
             int ch = channel - '0';
-            int state = (onoff == '1') ? HIGH : LOW;
-            digitalWrite(channel_pins[ch], state);
-
-            #ifdef DEBUG
-                Serial.print("OK: Channel ");
-                Serial.print(ch);
-                Serial.print(" set to ");
-                Serial.println(state == HIGH ? "ON" : "OFF");
-            #endif
-            return;
-        }
-        if (channel == 'A'){
-            int state = (onoff == '1') ? HIGH : LOW;
-            for(int i=0; i<n_channels; i++){
-                digitalWrite(channel_pins[i], state);
-            }
-            return;
+            digitalWrite(channel_pins[ch], (onoff == '1') ? HIGH : LOW);
         }
     }
-    Serial.println("ERR: Invalid command");
 }

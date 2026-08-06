@@ -44,6 +44,7 @@ bool servo_enable = false;
 bool emergency_stop = false;
 bool calibrate_center_on = true;
 int delta_angle_target = 0;
+bool ball_drop_done = false;
 
 int target_dir = 0;
 int wheel_speed = 0;
@@ -381,37 +382,112 @@ void reset_direction(HardwareSerial &serialPort = Serial){
     delta_angle_target = 0;
 }
 
-void simple_strategy(){
+void wait_non_blocking(unsigned long duration_ms) {
+    unsigned long time_out = millis() + duration_ms;
+    while (millis() < time_out) {
+        my_loop();
+        if (emergency_stop) return;
+    }
+}
+
+void open_ser2_timer(int duration_ms) {
+    if (duration_ms == 2000) forward_command("S2_2S");
+    else if (duration_ms == 1000) forward_command("S2_1S");
+    else if (duration_ms == 3000) forward_command("S2_3S");
+    else forward_command("SER2_MO");
+    wait_non_blocking(duration_ms);
+}
+
+void drop_balls_sync(int count, unsigned long max_wait_ms = 6000) {
+    ball_drop_done = false;
+    forward_command("D1");
+    forward_command("B" + String(count));
+    unsigned long time_out = millis() + max_wait_ms;
+    while (millis() < time_out && !ball_drop_done) {
+        my_loop();
+        if (emergency_stop) {
+            forward_command("D0");
+            forward_command("E");
+            return;
+        }
+    }
+    forward_command("D0");
+}
+
+void chien_thuat_tha_banh() {
+    Serial.println("Start combo tha banh");
+    
+    // B1: Chạy mù đến vị trí đầu -> Mở SER 2 trong 2s rồi đóng
+    calibrate_center_on = true;
+    auto_forward(1260);
+    if (emergency_stop) return;
+    open_ser2_timer(2000);
+    if (emergency_stop) return;
+
+    // B2 & B3: SER 3 mở + DC 3 bật, đếm 3 bóng -> đóng SER 3 & tắt DC 3
+    drop_balls_sync(3, 7000);
+    if (emergency_stop) return;
+    wait_non_blocking(500);
+
+    // B4: Di chuyển chạm Line 2 -> Mở SER 2 trong 2s rồi đóng
+    auto_forward(1000);
+    if (emergency_stop) return;
+    open_ser2_timer(2000);
+    if (emergency_stop) return;
+
+    // B5: SER 3 mở + DC 3 bật, đếm 1 bóng -> đóng SER 3 & tắt DC 3
+    drop_balls_sync(1, 5000);
+    if (emergency_stop) return;
+    wait_non_blocking(500);
+
+    // B6: Di chuyển chạm Line 3 -> Mở SER 2 trong 1s rồi đóng
+    auto_forward(1000);
+    if (emergency_stop) return;
+    open_ser2_timer(1000);
+    if (emergency_stop) return;
+
+    // B7: SER 3 mở + DC 3 bật, đếm 2 bóng -> đóng SER 3 & tắt DC 3
+    drop_balls_sync(2, 6000);
+    if (emergency_stop) return;
+    wait_non_blocking(500);
+
+    // B8: Di chuyển chạm Line 4 -> Mở SER 2 trong 3s, sau đó đóng cả SER 2 & SER 1
+    auto_forward(1000);
+    if (emergency_stop) return;
+    forward_command("S2_3S");
+    wait_non_blocking(3500);
+
+    Serial.println("Finish combo tha banh");
+}
+
+void simple_strategy() {
     calibrate_center_on = false;
     auto_forward(3600);
     rote_CW();
-    my_delay(1000);
-    
+    wait_non_blocking(1000);
+
     auto_forward(1850);
     rote_CCW();
-    auto_forward(-1700);
-    my_delay(1000);
-    calibrate_center_on = true;
-    auto_forward(1260*2);
-    my_delay(1000);
-    auto_forward(1000);
-    my_delay(1000);
-    auto_forward(1000);
+    auto_forward(-1700); // Lùi 1.7m và dừng khi nhận Line 4
+    wait_non_blocking(500);
+
+    // Kích hoạt chuỗi chiến thuật thả bóng sau khi dừng tại Line 4
+    chien_thuat_tha_banh();
 }
 
+void process_combo(int value) {
+    if (value == 0)  reset_direction(Serial2);
+    if (value == 16) forward_command("OA0");
+    if (value == 17) forward_command("O21");
 
-void process_combo(int value){
-    if(value == 0)  reset_direction(Serial2);
-    if(value == 16) forward_command("OA0");
-    if(value == 17) forward_command("O21");
+    if (value == 20) auto_forward(1200);
+    if (value == 25) auto_forward(-1200);
+    if (value == 29) auto_forward(4000);
+    if (value == 21) rote_CCW();
+    if (value == 22) rote_CW();
 
-    if(value == 20) auto_forward(1200);
-    if(value == 25) auto_forward(-1200);
-    if(value == 29) auto_forward(4000);
-    if(value == 21) rote_CCW();
-    if(value == 22) rote_CW();
-
-    if(value == 30) simple_strategy();
+    if (value == 30) simple_strategy();
+    if (value == 31) chien_thuat_tha_banh();
 }
 
 #define ROTATE_PID
@@ -448,6 +524,10 @@ void update_k_PID(String command){
 void processSerialCommand(String command) {
     Serial.println(command);
     command.trim();  // Remove any leading/trailing whitespace
+    if (command == "DONE" || command == "ALL_DONE") {
+        ball_drop_done = true;
+        return;
+    }
     char prefix = command.charAt(0);
 
     if(prefix == 'S'){  // Chassis speed

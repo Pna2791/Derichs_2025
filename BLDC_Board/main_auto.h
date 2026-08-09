@@ -21,6 +21,7 @@ BluetoothSerial SerialBT;
 #include <PID_Control.h>
 #include <BLDC_servo.h>
 #include "hi229.h"
+#include "TaskQueue.h"
 
 
 Encoder     left_encoder(13);
@@ -33,6 +34,10 @@ BLDC_Motor motor_right(22, 23, 19, 1, 1, 1);
 PIDController   forward_pid(10, 2, 1, -192, 192); // 315rpm speed 100-150
 PIDController   rotate_pid(2, 0.0, 0.15, -255, 255); // 315rpm speed 100-150
 
+
+TaskQueue forward_task_queue;
+bool is_started       = false;
+bool is_continue    = false;
 
 int line_sensor_pins[4] = {35, 34, 36, 39};
 
@@ -381,22 +386,64 @@ void reset_direction(HardwareSerial &serialPort = Serial){
     delta_angle_target = 0;
 }
 
+
+
+const int abs_positions[7] = {0, 1000, 2000, 3260, 4520, 5520, 6520};
+const int drop_delay[4] = {0, 1000, 1500, 2000};
+int current_position_index = 3;
+
+void process_task_queue(uint8_t val){
+    int position = val / 10;
+    int n_ball = val % 10;
+    int distance = abs_positions[position] - abs_positions[current_position_index];
+    if (distance != 0)
+        auto_forward(distance);
+    
+    forward_command("R" + String(n_ball));
+    my_delay(drop_delay[n_ball]);
+    current_position_index = position;
+}
+
 void simple_strategy(){
+    forward_task_queue.enqueue(31); // Drop 1 ball at position 3
+    forward_task_queue.enqueue(41); // Drop 1 ball at position 4
+    forward_task_queue.enqueue(51); // Drop 1 ball at position 5
+    forward_task_queue.enqueue(61); // Drop 1 ball at position 6
+
     calibrate_center_on = false;
     auto_forward(3600);
+
+    // Wait for continue signal
+    while(!is_continue){
+        my_loop();
+        if(emergency_stop)
+            return;
+    }
     rote_CW();
-    my_delay(1000);
     
     auto_forward(1850);
     rote_CCW();
     auto_forward(-1700);
-    my_delay(1000);
+    current_position_index = 3;
     calibrate_center_on = true;
-    auto_forward(1260*2);
-    my_delay(1000);
-    auto_forward(1000);
-    my_delay(1000);
-    auto_forward(1000);
+    
+
+    // Start dropping
+    while(true){
+        // check task in queue
+        uint8_t val;
+        if (forward_task_queue.dequeue(val)) {
+            process_task_queue(val);
+        }
+
+        my_loop();
+        if(emergency_stop){
+            is_started = false;
+            is_continue = false;
+            forward_task_queue.clear();
+            return;
+        }
+    }
 }
 
 
@@ -444,6 +491,24 @@ void update_k_PID(String command){
 }
 
 
+void process_task_queue(int val){
+    if(val == 9){
+        if(is_started){
+            is_continue = true;
+        }else{
+            is_started = true;
+            is_continue = false;
+            reset_direction();
+            simple_strategy();
+        }
+        return;
+    }
+    if(val%10 < 4 && val/10 < 7 && val/10 > 0){
+        forward_task_queue.enqueue(val);
+        return;
+    }
+}
+
 
 void processSerialCommand(String command) {
     Serial.println(command);
@@ -467,6 +532,9 @@ void processSerialCommand(String command) {
     if(prefix == 'E'){
         emergency_stop = true;
         return;
+    }
+    if(prefix == 'F'){
+        int value = command.substring(1).toInt();
     }
 
     if(prefix == 'C'){  // Chassis direction

@@ -108,6 +108,7 @@ void update_servo(){
 
 void signal_receriver(){
     static String command_0 = "";
+    static String command_1 = "";
     static String command_2 = "";
     static String command_BT = "";
 
@@ -119,6 +120,14 @@ void signal_receriver(){
             command_0 = "";
             processSerialCommand(command);
         }else   command_0 += ch;
+    }
+    if (Serial1.available()) {
+        char ch = Serial1.read();
+        if(ch == '\n'){
+            String command = command_1;
+            command_1 = "";
+            processSerialCommand(command);
+        }else   command_1 += ch;
     }
 
     // Check for serial commands

@@ -58,6 +58,7 @@ void processSerialCommand(String command);
 void setup() {
     Serial.begin(115200);
     SerialBT.begin(ROBOT_NAME); // Set the Bluetooth device name
+    Serial1.begin(9600, SERIAL_8N1, 0, 13); // RX, TX use for Second board
     Serial2.begin(115200, SERIAL_8N1, 2, 15); // RX, TX use for Hi229
 
     left_encoder.begin();
@@ -76,6 +77,7 @@ void setup() {
 
 void forward_command(String command){
     Serial.println(command);
+    Serial1.println(command);
 }
 
 
@@ -228,6 +230,15 @@ void calibrate_center(bool reset = false){
 
 }
 
+// Calibrate with auto forward 4000mm (C29) the real distance should be 4150mm.
+// If the distance larger than 4150mm, increase WHEEL_DIAMETER
+// If the distance smaller than 4150mm, decrease WHEEL_DIAMETER
+// new_dia = old_dia * distance_calibrate / 4150
+
+// Hiệu chỉnh bằng cách chạy tự động 4000mm (lệnh C29) khoảng cách thực tế nên là 4150mm.
+// Nếu khoảng cách đo được lớn hơn 4150mm, hãy tăng WHEEL_DIAMETER
+// Nếu khoảng cách đo được nhỏ hơn 4150mm, hãy giảm WHEEL_DIAMETER
+// Đường kính_mới = Đường kính_cũ * khoảng_cách_hiệu_chỉnh / 4150
 
 #define WHEEL_DIAMETER 100
 #define GEAR_RATIO 14   
@@ -236,15 +247,15 @@ void calibrate_center(bool reset = false){
 // gear_ratio * steps_per_revolution / wheel_diameter / pi
 const float step_per_mm = 1.0f * GEAR_RATIO * STEPS_PER_REVOLUTION / WHEEL_DIAMETER / 3.1416;
 
-#define brake_distance      10
-#define slowdown_distance   250
+#define brake_distance      0       // Khoảng cách phanh khi dừng (hiện tại đang bỏ qua)
+#define slowdown_distance   300     // Khoảng cách giảm tốc khi đến điểm dừng (Đây là điểm dừng khi không dò được, nếu không dò được thì quảng đường robot đã đi nhiều hơn slowdown_distance/2)
 #define auto_forward_speed  120
 // distance > 0: forward, distance < 0: backward (encoders count up only)
-void auto_forward(int distance){
+void auto_forward(int distance, int stop_sensor_index = 3){
     calibrate_center(true);
     
     int dir = (distance >= 0) ? 1 : -1;
-    distance = abs(distance);
+    distance = abs(distance) + slowdown_distance/2;
 
     Serial.println("Auto forward: " + String(dir * distance));
     Serial.println("step_per_mm: " + String(step_per_mm));
@@ -273,7 +284,7 @@ void auto_forward(int distance){
             is_normal_speed = false;
         }
         if(!is_normal_speed){
-            if(check_line_sensor(3)){
+            if(check_line_sensor(stop_sensor_index)){
                 break;
             }
         }
@@ -421,7 +432,7 @@ void simple_strategy(){
     }
     rote_CW();
     
-    auto_forward(1850);
+    auto_forward(1850, 2);
     rote_CCW();
     auto_forward(-1700);
     current_position_index = 3;

@@ -31,8 +31,9 @@ void signal_receriver(){
     if(Serial.available()){
         char ch = Serial.read();
         if(ch == '\n'){
-            process_command(command);
+            String tmp_cmd = command;
             command = "";
+            process_command(tmp_cmd);
         }else{
             command += ch;
         }
@@ -54,6 +55,13 @@ void my_delay(int value){
 }
 
 void drop_ball(int val){
+    if(val == 0){
+        servo[0].write(CLOSE_ANGLE_SERVO);
+        for(int i=i; i<4; i++)
+            servo[val].write(OPEN_ANGLE_SERVO);
+
+        return;
+    }
     // Đóng ngăn chứa với số banh tương ứng
     servo[val].write(CLOSE_ANGLE_SERVO);
     my_delay(SERVO_DELAY);
